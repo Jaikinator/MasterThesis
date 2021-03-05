@@ -156,7 +156,7 @@ def hamilton(x,  ext_x):
 #             return energy, psi, dens
 #         return calc
 
-#@jit
+@jit
 def calc(x, dens, orb_arr, pot):
         ex_energy, ex_potential = get_exchange(dens, x)
         ha_energy, ha_potential = get_hatree(dens, x)
@@ -182,13 +182,12 @@ if __name__ == "__main__":
 
     pot_arr = jnp.array((harm_oscill(grid_arr), harm_oscill(grid_arr)))
     number_of_samples = len(num_electron_arr)
-
     dens = jnp.zeros((number_of_samples, n_grid))  # initial dens
     max_iter = 1000
     energy_tolerance = 1e-5
 
     if number_of_samples > 1:
-        log = {"energy": [np.inf for i in range(number_of_samples)] , "energy_diff":[np.inf for i in range(number_of_samples)]}
+        log = {"energy": [[np.inf for i in range(number_of_samples)]], "energy_diff": [np.inf for i in range(number_of_samples)]}
     else:
         log = {"energy": [float("inf")], "energy_diff": [float("inf")]}
 
@@ -208,9 +207,7 @@ if __name__ == "__main__":
 
             #log
             log["energy"].append([energy[i,0] for i in range(number_of_samples)])
-
             energy_diff = [energy[i][0] - log["energy"][-2][i] for i in range(number_of_samples)]
-            print("Hello Darkness my old friend")
             log["energy_diff"].append(energy_diff)
             print_log(i, log, number_of_samples)
 
