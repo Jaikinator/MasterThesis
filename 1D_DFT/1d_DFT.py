@@ -9,9 +9,8 @@ from jax import grad, jit, vmap
 from jax.ops import index, index_add, index_update
 
 
-x = jnp.linspace(-5, 5, 200, dtype=jnp.float64)
-
 @jit
+
 def diffOP_first(x):
     n_grid_loc = len(x)
     h = x[1] - x[0]
@@ -53,7 +52,7 @@ def harm_oscill(x):
     #input: x is 2D Array of shape (n_grid, n_grid)
     #output: x as 2D Array of shape (n_grid, n_grid)
     X = x * x
-    return vmap(jnp.diag, 0)(X[None,:])
+    return (vmap(jnp.diag, 0)(X[None,:])).squeeze()
 
 
 #well potential:
@@ -76,7 +75,7 @@ def integral(x,y):
 
 
 #density
-@jit
+
 def density(orb_array, psi, x):
     # norm the wave function:
     I = integral(x, psi ** 2)
@@ -85,7 +84,8 @@ def density(orb_array, psi, x):
     # follow the Hundschen rules to set up the 2 spins on the orbitals
 
     fnT =orb_array
-    used_wavefunc = normed_psi.T[0:len(fnT[:,0]), :]
+
+    used_wavefunc = normed_psi.T[0:len(fnT), :]
     #def dens(orb, wavefunc):
         #return  orb * (wavefunc ** 2)
     dens = lambda orb, wavefunc : orb * (wavefunc ** 2)
@@ -112,66 +112,130 @@ def get_hatree(nx, x, eps=1e-1):
 
     return energy, vmap(potential, 0, 0 )(prepot)
 
-if __name__ == "__main__":
-    n_grid = 200
-    x = jnp.linspace(-5, 5, n_grid, dtype=jnp.float64)
-    dx = x[1] - x[0]
-    num_electrons = 17
-    max_iter = 1000
-    energy_tolerance = 1e-5
-    log = {"energy": [float("inf")], "energy_diff": [float("inf")]}
+#prepare actual calc.
 
+def e_conf(num_electrons, ngrid):
+    """
+    create an array with len of the maximal amount of covert orbitals
+    :param num_electrons: describes of number of electrons used for the calculation
+    :param ngrid: int, defines the grid size to calculate the maximal posibile number of orbitals
+    :return: arraylike, return an 1D array, give the number of electrons in each possible orbital back
+    """
+    max_orbs = jnp.zeros(int(ngrid/2))
+    num_orb = num_electrons // 2
+    full_orbs = index_update(max_orbs, index[0:num_orb], 2)
+    if jnp.mod(num_electrons, 2) == 1:
+        fn = index_update(full_orbs, index[num_orb], 1)
+    else:
+        fn = full_orbs
+    #fnT = fn.reshape((-1, 1))
+    return fn
 
-    def e_conf(num_electrons):
-        new_orb = False
-        num_orb = num_electrons // 2
+@jit
+def hamilton(x,  ext_x):
+    ham = lambda x : - diffOP_second(x) / 2
+    return ham(x) + ext_x
 
-        if jnp.mod(num_electrons, 2) == 1:
-            new_orb = True
-        orbital_number = num_orb + new_orb
+# def create_calc(ngrid):
+#         """
+#           func that create the array with x Value for the Hamiltonian
+#           :param ngrid: int, defines grid size
+#           :param electron_num: describes of number of electrons used for the calculation
+#           :param expt: arraylike input for the external potential
+#         """
+#         x = jnp.linspace(-5, 5, ngrid, dtype=jnp.float64)
+#         shape_e_array = jnp.zeros(ngrid//2)
+#         def calc(ngrid, orb_arr, pot, dens):
+#             ex_energy, ex_potential = get_exchange(dens, x)
+#             ha_energy, ha_potential = get_hatree(dens, x)
+#             # Hamiltonian
+#             pot_ext = ex_potential + ha_potential + pot
+#             H = hamilton(x, ext_x= pot_ext)
+#             energy, psi = jnp.linalg.eigh(H)
+#             dens = density(orb_arr, psi, x)
+#             return energy, psi, dens
+#         return calc
 
-        fn_0 = jnp.full(orbital_number, 2)
-        if new_orb == True:
-            fn = index_update(fn_0, index[-1], 1)
-
-        fnT = fn.reshape((-1, 1))
-        return fnT
-
-    orb_array = e_conf(num_electrons)
-
-    def print_log(i, log):
-        print(f"step: {i} energy: {round(log['energy'][-1], 5)} energy_diff: {round(log['energy_diff'][-1], 5)}")
-
-    def Energy_min(dens, x):
+#@jit
+def calc(x, dens, orb_arr, pot):
         ex_energy, ex_potential = get_exchange(dens, x)
         ha_energy, ha_potential = get_hatree(dens, x)
-
         # Hamiltonian
-        pot = ex_potential + ha_potential + x * x
-        H = - diffOP_second(x) / 2 + (vmap(jnp.diag, 0)(pot[None, :])).squeeze()
-        #test = ex_potential + ha_potential + x * x
-        #print(jnp.diagflat(ex_potential + ha_potential + x * x).shape,(vmap(jnp.diag, 0)(test[None, :])).squeeze().shape)
+        pot_ext = ex_potential + ha_potential + pot
+        H = hamilton(x, ext_x= pot_ext)
         energy, psi = jnp.linalg.eigh(H)
-        return energy, psi
+        dens = 0.9 * dens + 0.1 * density(orb_arr, psi, x)
+        return energy, psi, dens
 
-    dens = jnp.zeros(n_grid)
 
-    for i in range(max_iter):
 
-        energy, psi = Energy_min(dens, x)
 
-        # log
-        log["energy"].append(energy[0])
-        energy_diff = energy[0] - log["energy"][-2]
-        log["energy_diff"].append(energy_diff)
-        print_log(i, log)
-        # convergence
+if __name__ == "__main__":
+    n_grid = 200
+    limit = 5
 
-        if np.abs(energy_diff) < energy_tolerance:
-            print("converged!")
-            break
+    grid_arr =jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
 
-        # update density
-        dens = density(orb_array, psi, x)
+
+    num_electron_arr = jnp.array([17,12])
+    orb_array = jnp.array([e_conf(num_electron_arr[i], n_grid) for i in range(len(num_electron_arr))])
+
+    pot_arr = jnp.array((harm_oscill(grid_arr), harm_oscill(grid_arr)))
+    number_of_samples = len(num_electron_arr)
+
+    dens = jnp.zeros((number_of_samples, n_grid))  # initial dens
+    max_iter = 1000
+    energy_tolerance = 1e-5
+
+    if number_of_samples > 1:
+        log = {"energy": [np.inf for i in range(number_of_samples)] , "energy_diff":[np.inf for i in range(number_of_samples)]}
     else:
-        print("not converged")
+        log = {"energy": [float("inf")], "energy_diff": [float("inf")]}
+
+    def print_log(i, log, num_sampl):
+        if number_of_samples > 1:
+            print(f"step: {i} energy: {[round(float(log['energy'][-1][i]), 3)for i in range(num_sampl) ]}"
+                  f" energy_diff: {[round(float(log['energy_diff'][-1][i]), 5) for i in range(num_sampl)]}")
+        else:
+            print(f"step: {i} energy: {round(log['energy'][-1],3)} energy_diff: {round(log['energy_diff'][-1],5)}")
+
+    #print(grid_arr.shape, dens.shape, num_electron_arr.shape, orb_array.shape)
+    for i in range(max_iter):
+        if number_of_samples > 1:
+
+            energy, psi, dens = vmap(calc, (None, 0, 0, 0))(grid_arr, dens, orb_array, pot_arr)
+            # print(f"energy: {energy.shape},\t psi: {psi.shape},\t dens: {dens.shape}")
+
+            #log
+            log["energy"].append([energy[i,0] for i in range(number_of_samples)])
+
+            energy_diff = [energy[i][0] - log["energy"][-2][i] for i in range(number_of_samples)]
+            print("Hello Darkness my old friend")
+            log["energy_diff"].append(energy_diff)
+            print_log(i, log, number_of_samples)
+
+            # convergence
+            if np.abs(max(energy_diff)) < energy_tolerance:
+                print("converged!")
+                break
+            else:
+                print("not converged")
+        else:
+            if i == 0:
+                dens  = dens.squeeze()
+                orb_array = orb_array.squeeze()
+                pot_arr = pot_arr.squeeze()
+            energy, psi, dens = calc(grid_arr, dens, orb_array, pot_arr)
+
+            log["energy"].append(energy[0])
+            energy_diff = energy[0] - log["energy"][-2]
+            log["energy_diff"].append(energy_diff)
+            print_log(i, log, number_of_samples)
+
+            # convergence
+            if np.abs(energy_diff) < energy_tolerance:
+                print("converged!")
+                break
+            else:
+                print("not converged")
+
