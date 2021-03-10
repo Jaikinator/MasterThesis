@@ -1,6 +1,6 @@
 from jax.config import config
 config.update("jax_enable_x64", True)
-
+config.update('jax_platform_name', 'cpu')
 import numpy as np
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
@@ -65,13 +65,12 @@ def well_pot(x):
 @jit
 def integral(x,y):
     dx = x[1]- x[0]
-    y_new = y[:, None]
-    def mult(y):
-       return jnp.sum(y * dx)
-    return vmap(mult, (0))(y_new)
+    return jnp.sum(y*dx, axis = 0)
 
-#Electron configuration array:
-
+#add external Field:
+@jit
+def E_field(x,c):
+    return jnp.diagflat(x * c)
 
 
 #density
@@ -79,7 +78,6 @@ def integral(x,y):
 def density(orb_array, psi, x):
     # norm the wave function:
     I = integral(x, psi ** 2)
-    
     normed_psi = psi / jnp.sqrt(I)
     # follow the Hundschen rules to set up the 2 spins on the orbitals
 
@@ -97,15 +95,16 @@ def density(orb_array, psi, x):
 #excange Potential
 @jit
 def get_exchange(nx,x):
-    energy=-3./4.*(3./jnp.pi)**(1./3.)*integral(x,nx**(4./3.))
+    energy=-3./4.*(3./jnp.pi)**(1./3.) * jnp.trapz(nx**(4./3.),x)
+
     potential=-(3./jnp.pi)**(1./3.)*nx**(1./3.)
+
     return energy, potential
 
 #hartree fock
-@jit
+#@jit
 def get_hatree(nx, x, eps=1e-1):
     h = x[1] - x[0]
-
     energy = jnp.sum(nx[None, :] * nx[:, None] * h ** 2 / jnp.sqrt((x[None, :] - x[:, None]) ** 2 + eps) / 2)
     prepot = nx[None, :] * h / jnp.sqrt((x[None, :] - x[:, None]) ** 2 + eps)
     potential =lambda x :  jnp.sum(x, axis=-1)
@@ -136,51 +135,41 @@ def hamilton(x,  ext_x):
     ham = lambda x : - diffOP_second(x) / 2
     return ham(x) + ext_x
 
-# def create_calc(ngrid):
-#         """
-#           func that create the array with x Value for the Hamiltonian
-#           :param ngrid: int, defines grid size
-#           :param electron_num: describes of number of electrons used for the calculation
-#           :param expt: arraylike input for the external potential
-#         """
-#         x = jnp.linspace(-5, 5, ngrid, dtype=jnp.float64)
-#         shape_e_array = jnp.zeros(ngrid//2)
-#         def calc(ngrid, orb_arr, pot, dens):
-#             ex_energy, ex_potential = get_exchange(dens, x)
-#             ha_energy, ha_potential = get_hatree(dens, x)
-#             # Hamiltonian
-#             pot_ext = ex_potential + ha_potential + pot
-#             H = hamilton(x, ext_x= pot_ext)
-#             energy, psi = jnp.linalg.eigh(H)
-#             dens = density(orb_arr, psi, x)
-#             return energy, psi, dens
-#         return calc
+@jit
+def calc_Energy(x, dens, orb_arr, pot):
+    energy,_,_ = calc(x, dens, orb_arr, pot)
+    ha_energy, _ = get_hatree(dens, x)
+    ex_energy, ex_potential = get_exchange(dens, x)
+    innerintegral = ex_potential * dens
+    res = jnp.sum(energy) - ha_energy + ex_energy - jnp.trapz(innerintegral)
+    return res
 
 @jit
-def calc(x, dens, orb_arr, pot):
+def calc(x, dens, orb_arr, pot ):
         ex_energy, ex_potential = get_exchange(dens, x)
         ha_energy, ha_potential = get_hatree(dens, x)
         # Hamiltonian
-        pot_ext = ex_potential + ha_potential + pot
+        pot_ext = ex_potential + ha_potential + jnp.sum(pot, axis = 0)
         H = hamilton(x, ext_x= pot_ext)
         energy, psi = jnp.linalg.eigh(H)
         dens = 0.9 * dens + 0.1 * density(orb_arr, psi, x)
+
         return energy, psi, dens
 
 
 
-
 if __name__ == "__main__":
+
     n_grid = 200
     limit = 5
 
     grid_arr =jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
 
-
-    num_electron_arr = jnp.array([17,12])
+    num_electron_arr = jnp.array([17])
     orb_array = jnp.array([e_conf(num_electron_arr[i], n_grid) for i in range(len(num_electron_arr))])
 
-    pot_arr = jnp.array((harm_oscill(grid_arr), harm_oscill(grid_arr)))
+    pot_arr = jnp.array([harm_oscill(grid_arr), E_field(grid_arr, 0)])
+
     number_of_samples = len(num_electron_arr)
     dens = jnp.zeros((number_of_samples, n_grid))  # initial dens
     max_iter = 1000
@@ -199,11 +188,21 @@ if __name__ == "__main__":
             print(f"step: {i} energy: {round(log['energy'][-1],3)} energy_diff: {round(log['energy_diff'][-1],5)}")
 
     #print(grid_arr.shape, dens.shape, num_electron_arr.shape, orb_array.shape)
+
+    # vmap the caculations
+    vcalc = jit(vmap(calc, (None, 0, 0, 0)))
+    grad_E = jit(vmap(grad(calc_Energy, 3),(None, 0, 0, 0)))
+
+
+
     for i in range(max_iter):
         if number_of_samples > 1:
 
-            energy, psi, dens = vmap(calc, (None, 0, 0, 0))(grid_arr, dens, orb_array, pot_arr)
+            energy, psi, dens = vcalc(grid_arr, dens, orb_array, pot_arr)
             # print(f"energy: {energy.shape},\t psi: {psi.shape},\t dens: {dens.shape}")
+            #force = grad_E(grid_arr, dens, orb_array, pot_arr)
+            ha_energy, ha_potential = get_hatree(dens[0], grid_arr)
+
 
             #log
             log["energy"].append([energy[i,0] for i in range(number_of_samples)])
@@ -217,13 +216,16 @@ if __name__ == "__main__":
                 break
             else:
                 print("not converged")
+
         else:
             if i == 0:
                 dens  = dens.squeeze()
                 orb_array = orb_array.squeeze()
                 pot_arr = pot_arr.squeeze()
-            energy, psi, dens = calc(grid_arr, dens, orb_array, pot_arr)
 
+            energy, psi, dens = calc(grid_arr, dens, orb_array, pot_arr)
+            force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
+            print(force.shape,force[0,:,:])
             log["energy"].append(energy[0])
             energy_diff = energy[0] - log["energy"][-2]
             log["energy_diff"].append(energy_diff)
@@ -235,4 +237,5 @@ if __name__ == "__main__":
                 break
             else:
                 print("not converged")
+
 
