@@ -11,6 +11,7 @@ from jax import random
 from jax.tree_util import partial
 
 import numpy as np
+import dft_1d as dft
 
 a = np.array([[1,2,3,4,5],
      [11,22,33,44,55],
@@ -43,7 +44,27 @@ print(vmap(summer, (None, 0),  None)(x, z))
 print(jnp.mod(17,2))
 
 
-y1 = jnp.array([1,2,3,4,5,6,7,8,9]).reshape((9, 1))
+y1 = jnp.array([1,2,3,4,5,6,7,8,9]).reshape((9,1))
 y3 = jnp.array([11,22,33,44,55,66,77,88,99]).reshape((9, 1))
-print(jnp.column_stack((y1,y3))[0,1])
-
+print(y1,y3)
+#print(jnp.column_stack((y1,y3))[0,1])
+#
+# def E_field(x,c):
+#     return x*c
+#
+# @jit
+# def kwarg_ret(x,pot_kwargs):
+#     for key in pot_kwargs.keys():
+#         if key == "c":
+#             return E_field(x,pot_kwargs[key])
+# @jit
+# def test_calc(x,y,pot_kwarg):
+#     Energy = kwarg_ret(x,pot_kwarg)
+#     return y*x * Energy
+#
+# test_dict = {"c" : 0}
+#
+# print(test_calc(x,y, test_dict))
+#
+# c = dft.e_conf(17,200)
+# print("len",len(jnp.where(c != 0)[0]))
