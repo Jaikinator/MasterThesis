@@ -33,7 +33,7 @@ def _kwargs_to_parameters(species: Array = None, **kwargs) -> Dict[str, Array]:
 
 
 @jit
-def gauss_func(x,alpha, beta, dist):
+def gauss_func(x,alpha, beta, pos0):
     """
     func to crate a gauss function
     :param x:  input grid array
@@ -41,57 +41,52 @@ def gauss_func(x,alpha, beta, dist):
                   and coeff[0] the factor in the exponential func
     :return: gauss type func
     """
-    return alpha * jnp.exp(- beta * (x - dist)** 2)
+    return alpha * jnp.exp(- beta * (x - pos0)** 2)
 
 @jit
-def kohn_sham_orb(x, alpha, beta, dist):
+def all_basis_func(x, alpha, beta, pos0):
     #print(len(jnp.where(num_orb != 0)))
-    return vmap(gauss_func, (None, 0, 0, None))(x, alpha, beta, dist)
-
-# def atomic_kohn_sham(x, alpha, beta, orb , dist):
-#     return vmap(kohn_sham_orb, (None, None, None, 0, None))(x, alpha, beta, orb, dist)
+    return vmap(gauss_func, (None, 0, 0, 0))(x, alpha, beta, pos0)
 
 
-def system_args(n_grid, limit,dist_arr, **kwargs):
+
+def system_args(n_grid, limit, **kwargs):
     grid_arr = jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
-
-    for i in range(len(dist_arr)):
-        elec_alpha, elec_beta, elec_dist, elec_c = free_elec(dist = dist_arr[i])
-
-        if i == 0:
-            elec_alpha_arr = jnp.zeros((len(elec_alpha), len(dist_arr)))
-            elec_beta_arr = jnp.zeros((len(elec_beta), len(dist_arr)))
-
-        elec_alpha_arr = index_update(elec_alpha_arr,index[i, :],elec_alpha)
-        elec_beta_arr = index_update(elec_beta_arr,index[i, :],elec_beta)
+    elec_alpha, elec_beta, elec_dist, elec_c = H2()
 
     arg_dict = {"x" : grid_arr,
-                "alpha_arr": elec_alpha_arr,
-                "beta_arr": elec_beta_arr,
-                "dist_arr": dist_arr,
-                "c" : jnp.zeros((len(elec1_c),len(elec1_c)))}
+                "alpha_arr": elec_alpha,
+                "beta_arr": elec_beta,
+                "dist_arr": elec_dist,
+                "c" :  elec_c}
     return arg_dict
 
 
-@jit
+#@jit
 def S_int(system_kwargs):
     """
     Integral to calc the overlap Matrix
     :param gauss_arg: input for system information see func gauss_args
     :return: Overlapmatrix
     """
-    inner_overlap_mat = vmap(jnp.outer, (1,1))(kohn_sham_orb(system_kwargs["x"],
-                                                             system_kwargs["alpha_arr"][0, :],
-                                                             system_kwargs["beta_arr"][0, :],
+    # all_basis_func() shape L, n_grid_points
+    #Note give basis function array
+    inner_overlap_mat = vmap(jnp.outer, (1,1))(all_basis_func(system_kwargs["x"],
+                                                             system_kwargs["alpha_arr"],
+                                                             system_kwargs["beta_arr"],
                                                              system_kwargs["dist_arr"][0]),
-                                               kohn_sham_orb(system_kwargs["x"],
-                                                             system_kwargs["alpha_arr"][0, :],
-                                                             system_kwargs["beta_arr"][0, :],
+                                               all_basis_func(system_kwargs["x"],
+                                                             system_kwargs["alpha_arr"],
+                                                             system_kwargs["beta_arr"],
                                                              system_kwargs["dist_arr"][0]))
+
+    # shape (n_grid_points, L,L)
+
+    print(inner_overlap_mat.shape)
     overlap_mat = jnp.trapz(inner_overlap_mat, axis = 0)
     return overlap_mat
 
-#@jit
+@jit
 def kin_int(system_kwargs):
     """
     calc the kinetic energy Matrix of size (LxL)
@@ -99,39 +94,48 @@ def kin_int(system_kwargs):
     :return: array [LxL]
     """
     laplace = jit(vmap(vmap(grad(grad(gauss_func)),(0, None, None ,None)),
-                   (None, 0, 0 , None)))(system_kwargs["x"],
-                                         system_kwargs["alpha_arr"][0, :],
-                                         system_kwargs["beta_arr"][0, :],
-                                         system_kwargs["dist_arr"][0])
-    basis = kohn_sham_orb(system_kwargs["x"],system_kwargs["alpha_arr"][0, :],
-                          system_kwargs["beta_arr"][0, :],system_kwargs["dist_arr"][0])
+                   (None, 0, 0, 0)))(system_kwargs["x"],
+                                         system_kwargs["alpha_arr"],
+                                         system_kwargs["beta_arr"],
+                                         system_kwargs["dist_arr"])
+    basis = all_basis_func(system_kwargs["x"],system_kwargs["alpha_arr"],
+                          system_kwargs["beta_arr"],system_kwargs["dist_arr"])
 
 
     kin_op = vmap(jnp.outer, (1, 1))(basis, laplace)
     overlap_mat = jnp.trapz(kin_op, axis=0)
-    #(system_kwargs["x"],system_kwargs["alpha_arr"][0, :],system_kwargs["beta_arr"][0, :],system_kwargs["dist_arr"][0])
-    # kin_op = lambda x,func_coeff, basis: basis * (-(vmap(grad(grad(kohn_sham_orb)),(0,None))(x,func_coeff))/2)
-    # kin_part = jit(vmap(vmap(kin_op, (None,0, None)), (None, None, 0 )))(
-    #     system_kwargs["x"], system_kwargs["bfunc_coeff"] , system_kwargs["basis_func"]) #verallgemeinern
-    # return jnp.trapz(kin_part, axis=(2))
     return overlap_mat
 
-
-def density_mat(gauss_arg):
-    dens_mat = jnp.einsum('ni,mi -> nm', gauss_arg['c'], gauss_arg['c'])
+@jit
+def density_mat(system_kwargs):
+    dens_mat = jnp.einsum('ni,mi -> nm', system_kwargs['c'], system_kwargs['c'])
     return dens_mat
+
+def J_n_m(system_kwargs):
+    P_m_n = density_mat(system_kwargs)
+    def lam_delta_iterator(r1, dist_r1, r2, dist_r2, basis_mu_r1,basis_ny_r1, basis_lambda, basis_sigma):
+        inner =  basis_mu_r1 * basis_ny_r1 * (1/((r2 - dist_r2)-(r1 - dist_r1))) * basis_lambda * basis_sigma
+        return jnp.trapz(jnp.trapz(inner, system_kwargs["x"], axis= 0 ),system_kwargs["x"], axis=0)
+
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
 
     n_grid = 200
     limit = 5
+
     grid_arr = jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
-    elec1_alpha, elec1_beta, elec1_dist , elec1_c = free_elec()
-    elec2_alpha, elec2_beta, elec2_dist, elec2_c = free_elec(dist = 1)
-    print(elec1_alpha, elec1_beta, elec1_dist , elec1_c )
-    print(kohn_sham_orb(grid_arr, elec1_alpha, elec1_beta , elec1_dist).shape)
-    #print(kohn_sham_orb(grid_arr, elec2_alpha, elec2_beta, elec2_dist).shape)
-    dist_arr = jnp.array([0,1])
-    args = system_args(n_grid, limit, dist_arr)
-    print(kin_int(args))
+
+    elec1_alpha, elec1_beta, elec1_dist , elec1_c = H2()
+
+    #print(all_basis_func(grid_arr, elec1_alpha, elec1_beta , elec1_dist[0]).shape)
+
+    args = system_args(n_grid, limit)
+    print(S_int(args))
+

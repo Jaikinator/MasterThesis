@@ -6,8 +6,8 @@ from jax import partial
 from jax.ops import index, index_add, index_update
 
 
-def create_c_arr(alpha): #u can use beta as well
-    return jnp.zeros(alpha.shape)
+def create_c_arr(alpha, dist): #u can use beta as well
+    return jnp.zeros((len(alpha), len(dist)))
 
 @jit
 def H1():
@@ -48,7 +48,7 @@ def Li():
     return alpha, beta, kohn_sham_orb, c
 
 
-def free_elec(**kwargs):
+def H2(**kwargs):
     if "alpha" in kwargs:
         alpha = jnp.array(kwargs["alpha"])
     else:
@@ -62,8 +62,8 @@ def free_elec(**kwargs):
     if "dist" in kwargs:
         dist = jnp.array(kwargs["dist"])
     else:
-        dist = jnp.array(0.0)
-    c = create_c_arr(alpha)
+        dist = jnp.array([0.0, 1.0])
+    c = create_c_arr(alpha, dist)
     return alpha, beta, dist, c
 
 
