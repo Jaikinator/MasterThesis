@@ -159,7 +159,7 @@ if __name__ == "__main__":
     args = args_basis_func()
 
     #print(calc(args))
-    # print(grad(calc,(1,2))(grid_arr, alpha, beta, pos, c_arr))
+    # print(grad(calc,(1,2))(grid_arr, alpha, beta, pos, c_arr)) hhhh
     print(grad(calc, (1, 2))(grid_arr,args, c_arr))
 
 
