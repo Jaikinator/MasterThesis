@@ -22,16 +22,6 @@ from jax_md.space import distance, square_distance
 import dft_1d as dft
 from Params_1d import *
 
-
-def _kwargs_to_parameters(species: Array = None, **kwargs) -> Dict[str, Array]:
-    """Extract parameters from keyword arguments."""
-    # NOTE(schsam): We could pull out the species case from the generic case.
-    s_kwargs = kwargs
-    for key, val in kwargs.items():
-        s_kwargs[key] = val[species]
-    return s_kwargs
-
-
 @jit
 def gauss_func(x,alpha, beta, pos0):
     """
@@ -43,27 +33,33 @@ def gauss_func(x,alpha, beta, pos0):
     """
     return alpha * jnp.exp(- beta * (x - pos0)** 2)
 
-@jit
-def all_basis_func(x, alpha, beta, pos0):
-    #print(len(jnp.where(num_orb != 0)))
-    return vmap(gauss_func, (None, 0, 0, 0))(x, alpha, beta, pos0)
 
-
-
-def system_args(n_grid, limit, **kwargs):
-    grid_arr = jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
+def args_basis_func():
     elec_alpha, elec_beta, elec_dist, elec_c = H2()
-
-    arg_dict = {"x" : grid_arr,
-                "alpha_arr": elec_alpha,
-                "beta_arr": elec_beta,
-                "dist_arr": elec_dist,
-                "c" :  elec_c}
-    return arg_dict
+    return {"alpha_arr": elec_alpha,
+            "beta_arr": elec_beta,
+            "pos0_arr": elec_dist}
 
 
-#@jit
-def S_int(system_kwargs):
+# def system_args(n_grid, limit, **kwargs):
+#     grid_arr = jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
+#     elec_alpha, elec_beta, elec_dist, elec_c = H2()
+#
+#     arg_dict = {"grid" : grid_arr,
+#                 "alpha_arr": elec_alpha,
+#                 "beta_arr": elec_beta,
+#                 "pos0_arr": elec_dist,
+#                 "c" :  elec_c}
+#     return arg_dict
+
+@jit
+def all_basis_func(grid, system_kwargs):
+    #print(len(jnp.where(num_orb != 0)))
+    return vmap(gauss_func, (None, 0, 0, 0))(grid, system_kwargs["alpha_arr"],
+                                             system_kwargs["beta_arr"], system_kwargs["pos0_arr"])
+
+@jit
+def S_nm(grid, basis_function):
     """
     Integral to calc the overlap Matrix
     :param gauss_arg: input for system information see func gauss_args
@@ -82,8 +78,7 @@ def S_int(system_kwargs):
 
     # shape (n_grid_points, L,L)
 
-    print(inner_overlap_mat.shape)
-    overlap_mat = jnp.trapz(inner_overlap_mat, axis = 0)
+    overlap_mat = jnp.trapz(inner_overlap_mat,grid, axis = 0)
     return overlap_mat
 
 @jit
@@ -94,33 +89,58 @@ def kin_int(system_kwargs):
     :return: array [LxL]
     """
     laplace = jit(vmap(vmap(grad(grad(gauss_func)),(0, None, None ,None)),
-                   (None, 0, 0, 0)))(system_kwargs["x"],
-                                         system_kwargs["alpha_arr"],
-                                         system_kwargs["beta_arr"],
-                                         system_kwargs["dist_arr"])
-    basis = all_basis_func(system_kwargs["x"],system_kwargs["alpha_arr"],
-                          system_kwargs["beta_arr"],system_kwargs["dist_arr"])
-
-
-    kin_op = vmap(jnp.outer, (1, 1))(basis, laplace)
-    overlap_mat = jnp.trapz(kin_op, axis=0)
+                   (None, 0, 0, 0)))(grid,
+                                         basis_func_args["alpha_arr"],
+                                         basis_func_args["beta_arr"],
+                                         basis_func_args["pos0_arr"])
+    kin_op = vmap(jnp.outer, (1, 1))(basis_function, laplace)
+    overlap_mat = jnp.trapz(kin_op,grid, axis=0)
     return overlap_mat
 
 @jit
-def density_mat(system_kwargs):
-    dens_mat = jnp.einsum('ni,mi -> nm', system_kwargs['c'], system_kwargs['c'])
+def density_mat(c_arr):
+    dens_mat = jnp.einsum('ni,mi -> nm', c_arr, c_arr)
     return dens_mat
 
-def J_n_m(system_kwargs):
-    P_m_n = density_mat(system_kwargs)
-    def lam_delta_iterator(r1, dist_r1, r2, dist_r2, basis_mu_r1,basis_ny_r1, basis_lambda, basis_sigma):
-        inner =  basis_mu_r1 * basis_ny_r1 * (1/((r2 - dist_r2)-(r1 - dist_r1))) * basis_lambda * basis_sigma
-        return jnp.trapz(jnp.trapz(inner, system_kwargs["x"], axis= 0 ),system_kwargs["x"], axis=0)
+@jit
+def soft_coulomb(r_1,r_2):
+        return 1/jnp.sqrt(1 + (r_1-r_2)**2)
+
+@jit
+def four_center_integral(grid, basis_function_m, basis_function_n, basis_function_l, basis_function_s):
+        soft_coul_mat = vmap(soft_coulomb, (0, None), 1)(grid, grid)
+        inner =  basis_function_m.reshape(1,-1) * basis_function_n.reshape(1,-1) \
+                 * soft_coul_mat\
+                 * basis_function_l.reshape(-1,1) * basis_function_s.reshape(-1,1)
+        return jnp.trapz(jnp.trapz(inner, grid, axis = 0 ), grid, axis = 0)
+
+@jit
+def four_center_integral_vmap1(grid, basis_function_m, basis_function_n, basis_function_l, basis_function_s):
+    #calculate four center integral for all basis function lambda sigma for one pair mu, nu
+    return vmap(vmap(four_center_integral,(None, None, None, None, 0)),(None, None, None, 0, None))\
+        (grid, basis_function_m, basis_function_n, basis_function_l, basis_function_s)
 
 
 
 
 
+
+#
+# def calc(grid, alpha, beta, pos, c_arr):
+#     system_kwargs = {"grid": grid,
+#              "alpha_arr": alpha,
+#              "beta_arr": beta,
+#              "pos0_arr":pos,
+#              "c": c_arr}
+#     basis_function = all_basis_func(system_kwargs)
+#     c_matrix = density_mat(system_kwargs)
+#
+#     f_ks =-1/2 * kin_int(system_kwargs, basis_function) + J_nm(system_kwargs["grid"], basis_function, c_matrix) #kinetic part
+#     S = S_nm(system_kwargs["grid"], basis_function) #overlap matrix
+#     S_inverse = jnp.linalg.inv(S)
+#     new_ham = jnp.dot(S_inverse, f_ks)
+#     epsilon, c_matrix = jsci.linalg.eigh(new_ham, eigvals_only=False)
+#     return jnp.sum(epsilon)
 
 
 
@@ -132,10 +152,14 @@ if __name__ == "__main__":
 
     grid_arr = jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
 
-    elec1_alpha, elec1_beta, elec1_dist , elec1_c = H2()
+    alpha, beta, pos , c_arr = H2()
 
     #print(all_basis_func(grid_arr, elec1_alpha, elec1_beta , elec1_dist[0]).shape)
 
-    args = system_args(n_grid, limit)
-    print(S_int(args))
+    args = args_basis_func()
+
+    #print(calc(args))
+    # print(grad(calc,(1,2))(grid_arr, alpha, beta, pos, c_arr))
+    print(grad(calc, (1, 2))(grid_arr,args, c_arr))
+
 
