@@ -1,25 +1,6 @@
 from jax.config import config
 config.update("jax_enable_x64", True)
-import numpy as np
-import matplotlib.pyplot as plt
-import jax.numpy as jnp
-import jax.scipy as jsci
-from jax import grad, jit, vmap
-from jax import partial
-from jax.ops import index, index_add, index_update
 
-
-from typing import Dict
-from jax_md.util import Array
-from jax_md.util import f32
-from jax_md.util import f64
-from jax_md.util import safe_mask
-from jax_md.smap import _kwargs_to_parameters
-from jax_md.space import distance, square_distance
-
-
-
-import dft_1d as dft
 from Params_1d import *
 
 @jit
@@ -39,18 +20,6 @@ def args_basis_func():
     return {"alpha_arr": elec_alpha,
             "beta_arr": elec_beta,
             "pos0_arr": elec_dist}
-
-
-# def system_args(n_grid, limit, **kwargs):
-#     grid_arr = jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
-#     elec_alpha, elec_beta, elec_dist, elec_c = H2()
-#
-#     arg_dict = {"grid" : grid_arr,
-#                 "alpha_arr": elec_alpha,
-#                 "beta_arr": elec_beta,
-#                 "pos0_arr": elec_dist,
-#                 "c" :  elec_c}
-#     return arg_dict
 
 @jit
 def all_basis_func(grid, system_kwargs):
@@ -159,7 +128,7 @@ if __name__ == "__main__":
     args = args_basis_func()
 
     #print(calc(args))
-    # print(grad(calc,(1,2))(grid_arr, alpha, beta, pos, c_arr)) hhhh
+    # print(grad(calc,(1,2))(grid_arr, alpha, beta, pos, c_arr))
     print(grad(calc, (1, 2))(grid_arr,args, c_arr))
 
 

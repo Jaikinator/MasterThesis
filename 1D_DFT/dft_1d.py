@@ -141,7 +141,7 @@ def hamilton(x,  ext_x):
 #     res = jnp.sum(energy) - ha_energy + ex_energy - jnp.trapz(innerintegral)
 #     return res
 
-
+@jit
 def calc(x, dens, orb_arr, pot_kwargs ):
         ex_energy, ex_potential = get_exchange(dens, x)
         ha_energy, ha_potential = get_hatree(dens, x)
@@ -174,5 +174,18 @@ def calc_pol(x, dens, orb_arr, pot, c):
         H = hamilton(x, ext_x= pot_ext)
         energy, psi = jnp.linalg.eigh(H)
         dens =  0.9 * dens + 0.1 * density(orb_arr, psi, x)
+
+        return energy, psi, dens
+
+@jit
+def calc_raw(x, dens, orb_arr):
+        ex_energy, ex_potential = get_exchange(dens, x)
+        ha_energy, ha_potential = get_hatree(dens, x)
+
+        # Hamiltonian
+        pot_ext = jnp.diagflat(ex_potential + ha_potential )
+        H = hamilton(x, ext_x= pot_ext)
+        energy, psi = jnp.linalg.eigh(H)
+        dens = 0.9 * dens + 0.1 * density(orb_arr, psi, x)
 
         return energy, psi, dens

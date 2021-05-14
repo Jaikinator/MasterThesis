@@ -144,13 +144,12 @@ def hamilton(x,  ext_x):
 #     res = jnp.sum(energy) - ha_energy + ex_energy - jnp.trapz(innerintegral)
 #     return res
 
-
+@jit
 def calc(x, dens, orb_arr, pot_kwargs ):
         ex_energy, ex_potential = get_exchange(dens, x)
         ha_energy, ha_potential = get_hatree(dens, x)
 
         # Hamiltonian
-        print(pot_kwargs["pot1"])
         pot_ext = jnp.diagflat(ex_potential + ha_potential + jnp.sum(pot_kwargs.values(), axis = 0))
         H = hamilton(x, ext_x= pot_ext)
         energy, psi = jnp.linalg.eigh(H)
@@ -181,6 +180,20 @@ def calc_pol(x, dens, orb_arr, pot, c):
         return energy, psi, dens
 
 
+@jit
+def calc_raw(x, dens, orb_arr):
+        ex_energy, ex_potential = get_exchange(dens, x)
+        ha_energy, ha_potential = get_hatree(dens, x)
+
+        # Hamiltonian
+        pot_ext = jnp.diagflat(ex_potential + ha_potential )
+        H = hamilton(x, ext_x= pot_ext)
+        energy, psi = jnp.linalg.eigh(H)
+        dens = 0.9 * dens + 0.1 * density(orb_arr, psi, x)
+
+        return energy, psi, dens
+
+
 if __name__ == "__main__":
 
     n_grid = 200
@@ -188,10 +201,10 @@ if __name__ == "__main__":
 
     grid_arr =jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
 
-    num_electron_arr = jnp.array([17])
+    num_electron_arr = jnp.array([2])
     orb_array = jnp.array([e_conf(num_electron_arr[i], n_grid) for i in range(len(num_electron_arr))])
 
-    pot_arr = jnp.array([harm_oscill(grid_arr)])
+    pot_arr = jnp.array([])
     pot_dict = {"pot1" : harm_oscill(grid_arr),
                 "E_field" : E_field(0, grid_arr)}
     external_E_field = 0.0
@@ -213,77 +226,78 @@ if __name__ == "__main__":
         else:
             print(f"step: {i} energy: {round(log['energy'][-1],3)} energy_diff: {round(log['energy_diff'][-1],5)}")
 
-    #vmap the caculations
-    # vcalc = jit(vmap(calc, (None, 0, 0, 0)))
-    # grad_E = jit(vmap(grad(calc_Energy, 3),(None, 0, 0, 0)))
-
-
-    #
-    # for i in range(max_iter):
-    #     if number_of_samples > 1:
-    #
-    #         energy, psi, dens = vcalc(grid_arr, dens, orb_array, pot_arr)
-    #         # print(f"energy: {energy.shape},\t psi: {psi.shape},\t dens: {dens.shape}")
-    #         #force = grad_E(grid_arr, dens, orb_array, pot_arr)
-    #         ha_energy, ha_potential = get_hatree(dens[0], grid_arr)
-    #
-    #
-    #         #log
-    #         log["energy"].append([energy[i,0] for i in range(number_of_samples)])
-    #         energy_diff = [energy[i][0] - log["energy"][-2][i] for i in range(number_of_samples)]
-    #         log["energy_diff"].append(energy_diff)
-    #         print_log(i, log, number_of_samples)
-    #
-    #         # convergence
-    #         if np.abs(max(energy_diff)) < energy_tolerance:
-    #             print("converged!")
-    #             break
-    #         else:
-    #             print("not converged")
-    #
-    #     else:
-    #         if i == 0:
-    #             dens  = dens.squeeze()
-    #             orb_array = orb_array.squeeze()
-    #             pot_arr = pot_arr.squeeze()
-    #
-    #         energy, psi, dens = calc(grid_arr, dens, orb_array, pot_dict)
-    #         #force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
-    #         #print(force.shape,force[0,:,:])
-    #         log["energy"].append(energy[0])
-    #         energy_diff = energy[0] - log["energy"][-2]
-    #         log["energy_diff"].append(energy_diff)
-    #         print_log(i, log, number_of_samples)
-    #
-    #         # convergence
-    #         if np.abs(energy_diff) < energy_tolerance:
-    #             print("converged!")
-    #             break
-    #         else:
-    #             print("not converged")
+    # vmap the caculations
+    vcalc = jit(vmap(calc, (None, 0, 0, 0)))
+    #grad_E = jit(vmap(grad(calc_Energy, 3),(None, 0, 0, 0)))
 
 
 
-for i in range(max_iter):
-        if i == 0:
-            dens  = dens.squeeze()
-            orb_array = orb_array.squeeze()
-            pot_arr = pot_arr.squeeze()
+    for i in range(max_iter):
+        if number_of_samples > 1:
 
-        energy, psi, dens = calc_pol(grid_arr, dens, orb_array, pot_arr, external_E_field)
-        force_eField = grad(calc_Energy_pol, 4)(grid_arr, dens, orb_array, pot_arr, external_E_field)
-        grad_force_eField = grad(grad(calc_Energy_pol, 4),4)(grid_arr, dens, orb_array, pot_arr, external_E_field)
-        grad_grad_force_eField = grad(grad(grad(calc_Energy_pol, 4),4),4)(grid_arr, dens, orb_array, pot_arr, external_E_field)
-        print(force_eField, grad_force_eField, grad_grad_force_eField)
-        #force_harm = grad(calc_Energy_pol, 3)(grid_arr, dens, orb_array, pot_arr, external_E_field)
-        log["energy"].append(energy[0])
-        energy_diff = energy[0] - log["energy"][-2]
-        log["energy_diff"].append(energy_diff)
-        print_log(i, log, number_of_samples)
+            energy, psi, dens = vcalc(grid_arr, dens, orb_array, pot_arr)
+            # print(f"energy: {energy.shape},\t psi: {psi.shape},\t dens: {dens.shape}")
+            #force = grad_E(grid_arr, dens, orb_array, pot_arr)
+            ha_energy, ha_potential = get_hatree(dens[0], grid_arr)
 
-        # convergence
-        if np.abs(energy_diff) < energy_tolerance:
-            print("converged!")
-            break
+
+            #log
+            log["energy"].append([energy[i,0] for i in range(number_of_samples)])
+            energy_diff = [energy[i][0] - log["energy"][-2][i] for i in range(number_of_samples)]
+            log["energy_diff"].append(energy_diff)
+            print_log(i, log, number_of_samples)
+
+            # convergence
+            if np.abs(max(energy_diff)) < energy_tolerance:
+                print("converged!")
+                break
+            else:
+                print("not converged")
+
         else:
-            print("not converged")
+            if i == 0:
+                dens  = dens.squeeze()
+                orb_array = orb_array.squeeze()
+                pot_arr = pot_arr.squeeze()
+
+            energy, psi, dens = calc_raw(grid_arr, dens, orb_array)
+            #force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
+            #print(force.shape,force[0,:,:])
+            log["energy"].append(energy[0])
+            energy_diff = energy[0] - log["energy"][-2]
+            log["energy_diff"].append(energy_diff)
+            print_log(i, log, number_of_samples)
+
+            # convergence
+            if np.abs(energy_diff) < energy_tolerance:
+                print("converged!")
+                print(psi[0])
+                break
+            else:
+                print("not converged")
+
+#
+# # to calculate the infulence of an external electric field
+# for i in range(max_iter):
+#         if i == 0:
+#             dens  = dens.squeeze()
+#             orb_array = orb_array.squeeze()
+#             pot_arr = pot_arr.squeeze()
+#
+#         energy, psi, dens = calc_pol(grid_arr, dens, orb_array, pot_arr, external_E_field)
+#         force_eField = grad(calc_Energy_pol, 4)(grid_arr, dens, orb_array, pot_arr, external_E_field)
+#         grad_force_eField = grad(grad(calc_Energy_pol, 4),4)(grid_arr, dens, orb_array, pot_arr, external_E_field)
+#         grad_grad_force_eField = grad(grad(grad(calc_Energy_pol, 4),4),4)(grid_arr, dens, orb_array, pot_arr, external_E_field)
+#         print(force_eField, grad_force_eField, grad_grad_force_eField)
+#         #force_harm = grad(calc_Energy_pol, 3)(grid_arr, dens, orb_array, pot_arr, external_E_field)
+#         log["energy"].append(energy[0])
+#         energy_diff = energy[0] - log["energy"][-2]
+#         log["energy_diff"].append(energy_diff)
+#         print_log(i, log, number_of_samples)
+#
+#         # convergence
+#         if np.abs(energy_diff) < energy_tolerance:
+#             print("converged!")
+#             break
+#         else:
+#             print("not converged")
