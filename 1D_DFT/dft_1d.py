@@ -53,8 +53,9 @@ def harm_oscill(x):
 
 
 #well potential:
-@jit
+#@jit
 def well_pot(x):
+    #not jitable in this version
     w_old = jnp.full_like(x, 1.0e10)  # creat array of len of array x
     return index_update(w_old, index[jnp.logical_and(x > -2, x < 2)], 0.)
 
@@ -141,13 +142,25 @@ def hamilton(x,  ext_x):
 #     res = jnp.sum(energy) - ha_energy + ex_energy - jnp.trapz(innerintegral)
 #     return res
 
+
 @jit
-def calc(x, dens, orb_arr, pot_kwargs ):
+def calc(x, dens, orb_arr, pot_ext ):
         ex_energy, ex_potential = get_exchange(dens, x)
         ha_energy, ha_potential = get_hatree(dens, x)
 
         # Hamiltonian
-        print(pot_kwargs["pot1"])
+        pot_ext = jnp.diagflat(ex_potential + ha_potential + pot_ext)
+        H = hamilton(x, ext_x= pot_ext)
+        energy, psi = jnp.linalg.eigh(H)
+        dens = 0.9 * dens + 0.1 * density(orb_arr, psi, x)
+
+        return energy, psi, dens
+@jit
+def calc_mult_pot(x, dens, orb_arr, pot_kwargs ):
+        ex_energy, ex_potential = get_exchange(dens, x)
+        ha_energy, ha_potential = get_hatree(dens, x)
+
+        # Hamiltonian
         pot_ext = jnp.diagflat(ex_potential + ha_potential + jnp.sum(pot_kwargs.values(), axis = 0))
         H = hamilton(x, ext_x= pot_ext)
         energy, psi = jnp.linalg.eigh(H)
@@ -183,7 +196,7 @@ def calc_raw(x, dens, orb_arr):
         ha_energy, ha_potential = get_hatree(dens, x)
 
         # Hamiltonian
-        pot_ext = jnp.diagflat(ex_potential + ha_potential )
+        pot_ext = jnp.diagflat(ex_potential+ ha_potential) # + ha_potential
         H = hamilton(x, ext_x= pot_ext)
         energy, psi = jnp.linalg.eigh(H)
         dens = 0.9 * dens + 0.1 * density(orb_arr, psi, x)

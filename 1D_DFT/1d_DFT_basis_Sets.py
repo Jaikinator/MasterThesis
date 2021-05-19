@@ -2,6 +2,7 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 
 from Params_1d import *
+from dft_1d import *
 
 @jit
 def gauss_func(x,alpha, beta, pos0):
@@ -15,8 +16,9 @@ def gauss_func(x,alpha, beta, pos0):
     return alpha * jnp.exp(- beta * (x - pos0)** 2)
 
 
-def args_basis_func():
-    elec_alpha, elec_beta, elec_dist, elec_c = H2()
+
+def args_basis_func(**kwargs):
+    elec_alpha, elec_beta, elec_dist, elec_c = test_LCAO_basis_func(**kwargs)
     return {"alpha_arr": elec_alpha,
             "beta_arr": elec_beta,
             "pos0_arr": elec_dist}
@@ -62,8 +64,18 @@ def kin_int(system_kwargs):
                                          basis_func_args["alpha_arr"],
                                          basis_func_args["beta_arr"],
                                          basis_func_args["pos0_arr"])
+
     kin_op = vmap(jnp.outer, (1, 1))(basis_function, laplace)
-    overlap_mat = jnp.trapz(kin_op,grid, axis=0)
+    overlap_mat = jnp.trapz((-1/2 * kin_op) , grid, axis=0)
+    return overlap_mat
+
+def elec_nuclear_int(grid,  basis_function):
+
+    interact_basis_func = (1/(grid)) * basis_function
+
+    inner_overlap_mat = vmap(jnp.outer, (1, 1))(basis_function, interact_basis_func)
+
+    overlap_mat = jnp.trapz(inner_overlap_mat, grid, axis=0)
     return overlap_mat
 
 @jit
@@ -93,6 +105,27 @@ def four_center_integral_vmap1(grid, basis_function_m, basis_function_n, basis_f
 
 
 
+def SCFC(grid, basis_args, c_arr, max_iter, tol):
+    # calculates the Self consistent field calculation
+
+    iter = 0
+    energy_arr = [0]
+    while iter < max_iter:
+
+        energy, c_arr = calc(grid, basis_args,  c_arr)
+        energy_arr.append(energy)
+
+        energy_diff = energy_arr[iter + 1] - energy_arr[iter]
+
+        print(f"step: {iter}, energy: {round(energy, 5)}, energy diff: {round(energy_diff, 5)}")
+
+        if energy_diff < tol:
+            print("converged!")
+            break
+        else:
+            print("not converged")
+        iter += 1
+    return  energy
 
 #
 # def calc(grid, alpha, beta, pos, c_arr):
@@ -112,8 +145,6 @@ def four_center_integral_vmap1(grid, basis_function_m, basis_function_n, basis_f
 #     return jnp.sum(epsilon)
 
 
-
-
 if __name__ == "__main__":
 
     n_grid = 200
@@ -121,14 +152,31 @@ if __name__ == "__main__":
 
     grid_arr = jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
 
-    alpha, beta, pos , c_arr = H2()
-
+    #alpha, beta, pos , c_arr = test_LCAO_basis_func(grid_arr = grid_arr, num_electrons = 2)
+    c_arr = jnp. array([[0.0, 0.0],
+             [0.0 ,0.0]])
     #print(all_basis_func(grid_arr, elec1_alpha, elec1_beta , elec1_dist[0]).shape)
 
-    args = args_basis_func()
+    args = args_basis_func(grid_arr = grid_arr, num_electrons = 2)
 
     #print(calc(args))
     # print(grad(calc,(1,2))(grid_arr, alpha, beta, pos, c_arr))
-    print(grad(calc, (1, 2))(grid_arr,args, c_arr))
+    #print(calc(grid_arr,args, c_arr))
+    #print(grad(calc, (1, 2))(grid_arr,args, c_arr))
+    print("\n \t Calculation using basis Set \n")
+    print(SCFC(grid_arr, args, c_arr, 1000, 1e-5))
+    basis_func = all_basis_func(grid_arr, args)
+    # print(four_center_integral_vmap1(grid_arr, basis_func[0], basis_func[1], basis_func[1], basis_func[0]))
+    # print(basis_func[0])
 
+    #plot basis func:
+
+    # plt.title("basis function")
+    # plt.plot(grid_arr, basis_func[0], label = "func 1")
+    # plt.plot(grid_arr, basis_func[1], label = "func 2")
+    # plt.legend()
+    # plt.savefig("/home/jacob/PycharmProjects/MasterThesis/1D_DFT/Plots/basis_func.png")
+
+    plt.plot(grid_arr,four_center_integral_vmap1(grid_arr, basis_func[0], basis_func[1], basis_func[1], basis_func[0])[0])
+    plt.show()
 

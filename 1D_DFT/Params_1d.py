@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 from jax.config import config
 config.update("jax_enable_x64", True)
 import jax.numpy as jnp
@@ -73,7 +74,7 @@ def H2(**kwargs):
 
 
 
-def test_LCAO_basis_func(grid_arr, dens, num_electrons):
+def test_LCAO_basis_func(grid_arr, num_electrons):
     """
     to test the DFT Kohn sham approach in 1d_DFT_basis_Sets for the internal coe not relevant
     :param x: grid_arr
@@ -82,15 +83,22 @@ def test_LCAO_basis_func(grid_arr, dens, num_electrons):
     :return: wave function
     """
     orb_array = e_conf(num_electrons, len(grid_arr))
-
+    dens = jnp.zeros(len(grid_arr))
     max_iter = 1000
     energy_tolerance = 1e-5
+
+    #add external field
+
+    #pot_ext = well_pot(grid_arr)
+
+    #logging energy diff:
 
     log = {"energy": [float("inf")], "energy_diff": [float("inf")]}
 
     def print_log(i, log):
         print(f"step: {i} energy: {round(log['energy'][-1], 3)} energy_diff: {round(log['energy_diff'][-1], 5)}")
 
+    #create fit func
     def gauss_func(x, alpha, beta, pos0):
         """
         func to crate a gauss function
@@ -100,6 +108,8 @@ def test_LCAO_basis_func(grid_arr, dens, num_electrons):
         :return: gauss type func
         """
         return alpha * jnp.exp(- beta * (x - pos0) ** 2)
+
+    #solve System in realspace
 
     for i in range(max_iter):
 
@@ -121,25 +131,55 @@ def test_LCAO_basis_func(grid_arr, dens, num_electrons):
             break
         else:
             print("not converged")
-
-    output = np.zeros((2, num_electrons))
-    print(num_electrons)
+    #create output arrays
     alpha = np.zeros(num_electrons)
     beta = np.zeros(num_electrons)
     pos = np.zeros(num_electrons)
-    for i in range (num_electrons):
-        # output[:, 0] = curve_fit(gauss_func, grid_arr, psi[i])
+    psi_new = np.zeros(psi.shape)
+
+    #calculate fit func for the relevant Praticles
+    for i in range(num_electrons):
+
         if i == 0:
-            fit_arr = curve_fit(gauss_func, grid_arr, psi[i], p0 = [1,1, 0])[0]
+            fit_arr = curve_fit(gauss_func, grid_arr, psi[:,0], p0=[1, 1, -1], maxfev=1000000)[0]
         else:
-            fit_arr = curve_fit(gauss_func, grid_arr, psi[i])[0]
+            fit_arr = curve_fit(gauss_func, grid_arr, psi[:,1], maxfev=1000000)[0]
+
 
         alpha[i] = fit_arr[0]
         beta[i] = fit_arr[1]
         pos[i] = fit_arr[2]
+    for i in range(3):
+
+        plt.plot(grid_arr, psi[:,i],label=f"psi [:,{i}] orginal" )
+        plt.title("plot psi[:,i](column wise)")
+        plt.legend()
+    plt.savefig(f"/home/jacob/PycharmProjects/MasterThesis/1D_DFT/Plots/psi_column.png")
+    plt.close()
+
+    # #prove of the fit func for the realspace system
+    # for i in range(len(grid_arr)):
+    #     if i == 0:
+    #         fit_arr = curve_fit(gauss_func, grid_arr, psi[0], p0=[1, 1, 1])[0]
+    #     else:
+    #         fit_arr = curve_fit(gauss_func, grid_arr, psi[i], maxfev=1000000)[0]
+    #     psi_new[i,:] =  gauss_func(grid_arr, fit_arr[0], fit_arr[1] ,fit_arr[2])
+    #     print(f"fit of psi of {i} is done!")
+    #
+    #
+    # dens = density(orb_array, psi_new, grid_arr)
+    # energy, psi, dens = calc_raw(grid_arr, dens, orb_array)
+    # # force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
+    # # print(force.shape,force[0,:,:])
+    # log["energy"].append(energy[0])
+    # energy_diff = energy[0] - log["energy"][-2]
+    # log["energy_diff"].append(energy_diff)
+    # print_log(i, log)
+    #
+
+    # force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
+    # print(force.shape,force[0,:,:])
+
     return jnp.array(alpha), jnp.array(beta), jnp.array(pos), create_c_arr(alpha, pos)
-    # return output
-
-
 
 

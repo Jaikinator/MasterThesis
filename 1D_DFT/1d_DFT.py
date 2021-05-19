@@ -58,8 +58,9 @@ def harm_oscill(x):
 #well potential:
 @jit
 def well_pot(x):
+
     w_old = jnp.full_like(x, 1.0e10)  # creat array of len of array x
-    return index_update(w_old, index[jnp.logical_and(x > -2, x < 2)], 0.)
+    return index_update(w_old, index[jnp.logical_and(x > -2.0, x < 2.0)], 0.)
 
 # integral
 @jit
