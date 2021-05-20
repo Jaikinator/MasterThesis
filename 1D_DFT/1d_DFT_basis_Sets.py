@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+import numpy as np
 from jax.config import config
 config.update("jax_enable_x64", True)
 
@@ -22,6 +24,7 @@ def args_basis_func(**kwargs):
     return {"alpha_arr": elec_alpha,
             "beta_arr": elec_beta,
             "pos0_arr": elec_dist}
+
 
 @jit
 def all_basis_func(grid, system_kwargs):
@@ -69,6 +72,17 @@ def kin_int(system_kwargs):
     overlap_mat = jnp.trapz((-1/2 * kin_op) , grid, axis=0)
     return overlap_mat
 
+def kin_int_numeric(grid, basis_function):
+    laplace = jnp.diff(jnp.diff(basis_function, append = 0), append = 0)
+
+    inner_overlap_mat = vmap(jnp.outer, (1, 1))(basis_function, laplace)
+
+    # shape (n_grid_points, L,L)
+
+    overlap_mat = jnp.trapz(inner_overlap_mat, grid, axis=0)
+    return overlap_mat
+
+
 def elec_nuclear_int(grid,  basis_function):
 
     interact_basis_func = (1/(grid)) * basis_function
@@ -102,6 +116,12 @@ def four_center_integral_vmap1(grid, basis_function_m, basis_function_n, basis_f
         (grid, basis_function_m, basis_function_n, basis_function_l, basis_function_s)
 
 
+########################################################################################################################
+# Do it analyticaly
+########################################################################################################################
+
+#@jit
+def calc(grid, basis_args, c_arr):
 
 
 
@@ -145,6 +165,51 @@ def SCFC(grid, basis_args, c_arr, max_iter, tol):
 #     return jnp.sum(epsilon)
 
 
+
+########################################################################################################################
+# Do it numericaly
+########################################################################################################################
+
+def calc_numeric(grid, basis_function, c_arr):
+
+    c_matrix = density_mat(c_arr)
+
+    f_ks = kin_int_numeric(grid, basis_function) + J_nm(grid, basis_function, c_matrix)  #kinetic part
+    print(f"numeric kinetic enrergy: \n{kin_int_numeric(grid, basis_function)} \n "
+          f"J_nm: \n {J_nm(grid, basis_function, c_matrix)}")
+    S = S_nm(grid, basis_function) #overlap matrix
+    S_inverse = jnp.linalg.inv(S)
+    new_ham = jnp.dot(S_inverse, f_ks)
+    epsilon, c_matrix_new = jsci.linalg.eigh(new_ham, eigvals_only=False)
+
+    c_matrix = 0.9 * c_matrix + 0.1 * c_matrix_new
+    return jnp.sum(epsilon), c_matrix
+
+def SCFC_numeric(grid, basis_func, c_arr, max_iter, tol):
+    # calculates the Self consistent field calculation
+
+    iter = 0
+    energy_arr = [0]
+    while iter < max_iter:
+
+        energy, c_arr = calc_numeric(grid, basis_func,  c_arr)
+        energy_arr.append(energy)
+
+        print(f"c arrray after calc: \n{c_arr}")
+        energy_diff = energy_arr[iter + 1] - energy_arr[iter]
+
+        print(f"step: {iter}, energy: {round(energy, 5)}, energy diff: {round(energy_diff, 5)}")
+
+        if abs(energy_diff) < tol:
+            print("converged!")
+            print(f"final energy is: {energy}")
+            break
+        else:
+            print("not converged")
+        iter += 1
+    return  energy
+
+
 if __name__ == "__main__":
 
     n_grid = 200
@@ -153,19 +218,25 @@ if __name__ == "__main__":
     grid_arr = jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
 
     #alpha, beta, pos , c_arr = test_LCAO_basis_func(grid_arr = grid_arr, num_electrons = 2)
+
     c_arr = jnp. array([[0.0, 0.0],
              [0.0 ,0.0]])
+
     #print(all_basis_func(grid_arr, elec1_alpha, elec1_beta , elec1_dist[0]).shape)
 
-    args = args_basis_func(grid_arr = grid_arr, num_electrons = 2)
+    #args = args_basis_func(grid_arr = grid_arr, num_electrons = 2)
 
     #print(calc(args))
     # print(grad(calc,(1,2))(grid_arr, alpha, beta, pos, c_arr))
     #print(calc(grid_arr,args, c_arr))
     #print(grad(calc, (1, 2))(grid_arr,args, c_arr))
-    print("\n \t Calculation using basis Set \n")
-    print(SCFC(grid_arr, args, c_arr, 1000, 1e-5))
-    basis_func = all_basis_func(grid_arr, args)
+
+    #print("\n \t Calculation using basis Set \n")
+
+    #print(SCFC(grid_arr, args, c_arr, 1000, 1e-5))
+    # basis_func = all_basis_func(grid_arr, args)
+
+
     # print(four_center_integral_vmap1(grid_arr, basis_func[0], basis_func[1], basis_func[1], basis_func[0]))
     # print(basis_func[0])
 
@@ -177,6 +248,20 @@ if __name__ == "__main__":
     # plt.legend()
     # plt.savefig("/home/jacob/PycharmProjects/MasterThesis/1D_DFT/Plots/basis_func.png")
 
-    plt.plot(grid_arr,four_center_integral_vmap1(grid_arr, basis_func[0], basis_func[1], basis_func[1], basis_func[0])[0])
+
+########################################################################################################################
+# Do it numericaly
+########################################################################################################################
+    print("\n \t Calculation numeric basis Set \n")
+
+    basis_func = jnp.transpose(test_LCAO_basis_func(grid_arr=grid_arr, num_electrons=2))
+
+    plt.plot(grid_arr,basis_func[0])
+    plt.plot(grid_arr, basis_func[1])
     plt.show()
+
+    print("\n \t Calculation using basis Set \n")
+
+    SCFC_numeric(grid_arr, basis_func, c_arr, 1000, 1e-7)
+
 

@@ -149,13 +149,15 @@ def test_LCAO_basis_func(grid_arr, num_electrons):
         alpha[i] = fit_arr[0]
         beta[i] = fit_arr[1]
         pos[i] = fit_arr[2]
-    for i in range(3):
 
-        plt.plot(grid_arr, psi[:,i],label=f"psi [:,{i}] orginal" )
-        plt.title("plot psi[:,i](column wise)")
-        plt.legend()
-    plt.savefig(f"/home/jacob/PycharmProjects/MasterThesis/1D_DFT/Plots/psi_column.png")
-    plt.close()
+
+    # for i in range(3):
+    #
+    #     plt.plot(grid_arr, psi[:,i],label=f"psi [:,{i}] orginal" )
+    #     plt.title("plot psi[:,i](column wise)")
+    #     plt.legend()
+    # plt.savefig(f"/home/jacob/PycharmProjects/MasterThesis/1D_DFT/Plots/psi_column.png")
+    # plt.close()
 
     # #prove of the fit func for the realspace system
     # for i in range(len(grid_arr)):
@@ -180,6 +182,8 @@ def test_LCAO_basis_func(grid_arr, num_electrons):
     # force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
     # print(force.shape,force[0,:,:])
 
-    return jnp.array(alpha), jnp.array(beta), jnp.array(pos), create_c_arr(alpha, pos)
+    #return jnp.array(alpha), jnp.array(beta), jnp.array(pos), create_c_arr(alpha, pos)
+
+    return psi[:, (0 , 1)]
 
 

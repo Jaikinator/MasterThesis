@@ -68,12 +68,17 @@ import dft_1d as dft
 #
 # c = dft.e_conf(17,200)
 # print("len",len(jnp.where(c != 0)[0]))
+#
+# test = jnp.array([[0,1,2,3,4,5],
+#                     [0,1,2,3,4,5],
+#                     [0,1,2,3,4,5],
+#                     [0,1,2,3,4,5],
+#                     [0,1,2,3,4,5]])
+#
+# print(f"coulum wise test[:,0]: {test[:,0]}")
+# print(f"row wise test[0,:]: {test[0,:]}")
 
-test = jnp.array([[0,1,2,3,4,5],
-                    [0,1,2,3,4,5],
-                    [0,1,2,3,4,5],
-                    [0,1,2,3,4,5],
-                    [0,1,2,3,4,5]])
-
-print(f"coulum wise test[:,0]: {test[:,0]}")
-print(f"row wise test[0,:]: {test[0,:]}")
+b = jnp.arange(16).reshape(4, 4)
+c = b + b.T
+print(np.matmul(c, np.linalg.eigh((c) * 1.0)[1][0]) / np.linalg.eigh(c)[0][0] - np.linalg.eigh(c)[1][0])
+print(np.matmul(c, np.linalg.eigh((c) * 1.0)[1][:, 0]) / np.linalg.eigh(c)[0][0] - np.linalg.eigh(c)[1][:, 0])
