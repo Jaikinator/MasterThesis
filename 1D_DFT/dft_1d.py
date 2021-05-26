@@ -196,7 +196,7 @@ def calc_raw(x, dens, orb_arr):
         ha_energy, ha_potential = get_hatree(dens, x)
 
         # Hamiltonian
-        pot_ext = jnp.diagflat(ex_potential+ ha_potential) # + ha_potential
+        pot_ext = jnp.diagflat(ex_potential + ha_potential) # ex_potential+
         H = hamilton(x, ext_x= pot_ext)
         energy, psi = jnp.linalg.eigh(H)
         dens = 0.9 * dens + 0.1 * density(orb_arr, psi, x)

@@ -80,7 +80,7 @@ def kin_int_numeric(grid, basis_function):
     # shape (n_grid_points, L,L)
 
     overlap_mat = jnp.trapz(inner_overlap_mat, grid, axis=0)
-    return overlap_mat
+    return (-1/2)* overlap_mat
 
 
 def elec_nuclear_int(grid,  basis_function):
@@ -92,6 +92,9 @@ def elec_nuclear_int(grid,  basis_function):
     overlap_mat = jnp.trapz(inner_overlap_mat, grid, axis=0)
     return overlap_mat
 
+########################################################################################################################
+# calc  Coulomb contribution as well as local  density and four_center_integral
+########################################################################################################################
 @jit
 def density_mat(c_arr):
     dens_mat = jnp.einsum('ni,mi -> nm', c_arr, c_arr)
@@ -147,24 +150,6 @@ def SCFC(grid, basis_args, c_arr, max_iter, tol):
         iter += 1
     return  energy
 
-#
-# def calc(grid, alpha, beta, pos, c_arr):
-#     system_kwargs = {"grid": grid,
-#              "alpha_arr": alpha,
-#              "beta_arr": beta,
-#              "pos0_arr":pos,
-#              "c": c_arr}
-#     basis_function = all_basis_func(system_kwargs)
-#     c_matrix = density_mat(system_kwargs)
-#
-#     f_ks =-1/2 * kin_int(system_kwargs, basis_function) + J_nm(system_kwargs["grid"], basis_function, c_matrix) #kinetic part
-#     S = S_nm(system_kwargs["grid"], basis_function) #overlap matrix
-#     S_inverse = jnp.linalg.inv(S)
-#     new_ham = jnp.dot(S_inverse, f_ks)
-#     epsilon, c_matrix = jsci.linalg.eigh(new_ham, eigvals_only=False)
-#     return jnp.sum(epsilon)
-
-
 
 ########################################################################################################################
 # Do it numericaly
@@ -174,9 +159,10 @@ def calc_numeric(grid, basis_function, c_arr):
 
     c_matrix = density_mat(c_arr)
 
-    f_ks = kin_int_numeric(grid, basis_function) + J_nm(grid, basis_function, c_matrix)  #kinetic part
-    print(f"numeric kinetic enrergy: \n{kin_int_numeric(grid, basis_function)} \n "
-          f"J_nm: \n {J_nm(grid, basis_function, c_matrix)}")
+
+    f_ks = kin_int_numeric(grid, basis_function) + J_nm(grid, basis_function, c_matrix) +hatree_potential(grid, basis_function, c_matrix) #kinetic part
+    # print(f"numeric kinetic enrergy: \n{kin_int_numeric(grid, basis_function)} \n "
+    #       f"J_nm: \n {J_nm(grid, basis_function, c_matrix)}")
     S = S_nm(grid, basis_function) #overlap matrix
     S_inverse = jnp.linalg.inv(S)
     new_ham = jnp.dot(S_inverse, f_ks)
@@ -190,12 +176,13 @@ def SCFC_numeric(grid, basis_func, c_arr, max_iter, tol):
 
     iter = 0
     energy_arr = [0]
+
     while iter < max_iter:
 
         energy, c_arr = calc_numeric(grid, basis_func,  c_arr)
         energy_arr.append(energy)
 
-        print(f"c arrray after calc: \n{c_arr}")
+        # print(f"c arrray after calc: \n{c_arr}")
         energy_diff = energy_arr[iter + 1] - energy_arr[iter]
 
         print(f"step: {iter}, energy: {round(energy, 5)}, energy diff: {round(energy_diff, 5)}")
@@ -217,23 +204,17 @@ if __name__ == "__main__":
 
     grid_arr = jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
 
-    #alpha, beta, pos , c_arr = test_LCAO_basis_func(grid_arr = grid_arr, num_electrons = 2)
+    c_arr = jnp. array([[1.0, 0.0],
+             [0.0 ,1.0]])
 
-    c_arr = jnp. array([[0.0, 0.0],
-             [0.0 ,0.0]])
+########################################################################################################################
+# Do it analyticaly
+########################################################################################################################
 
-    #print(all_basis_func(grid_arr, elec1_alpha, elec1_beta , elec1_dist[0]).shape)
-
-    #args = args_basis_func(grid_arr = grid_arr, num_electrons = 2)
-
-    #print(calc(args))
-    # print(grad(calc,(1,2))(grid_arr, alpha, beta, pos, c_arr))
-    #print(calc(grid_arr,args, c_arr))
-    #print(grad(calc, (1, 2))(grid_arr,args, c_arr))
-
-    #print("\n \t Calculation using basis Set \n")
-
-    #print(SCFC(grid_arr, args, c_arr, 1000, 1e-5))
+    # args = args_basis_func(grid_arr = grid_arr, num_electrons = 2)
+    #
+    #
+    # print("\n result using analytic \n ", SCFC(grid_arr, args, c_arr, 1000, 1e-5))
     # basis_func = all_basis_func(grid_arr, args)
 
 
@@ -255,12 +236,11 @@ if __name__ == "__main__":
     print("\n \t Calculation numeric basis Set \n")
 
     basis_func = jnp.transpose(test_LCAO_basis_func(grid_arr=grid_arr, num_electrons=2))
-
-    plt.plot(grid_arr,basis_func[0])
-    plt.plot(grid_arr, basis_func[1])
-    plt.show()
-
-    print("\n \t Calculation using basis Set \n")
+    # args = args_basis_func(grid_arr = grid_arr, num_electrons = 2)
+    # basis_func = all_basis_func(grid_arr, args)
+    # plt.plot(grid_arr,basis_func[0])
+    # plt.plot(grid_arr, basis_func[1])
+    # plt.show()
 
     SCFC_numeric(grid_arr, basis_func, c_arr, 1000, 1e-7)
 

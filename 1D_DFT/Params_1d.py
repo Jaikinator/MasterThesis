@@ -182,7 +182,7 @@ def test_LCAO_basis_func(grid_arr, num_electrons):
     # force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
     # print(force.shape,force[0,:,:])
 
-    #return jnp.array(alpha), jnp.array(beta), jnp.array(pos), create_c_arr(alpha, pos)
+    # return jnp.array(alpha), jnp.array(beta), jnp.array(pos), create_c_arr(alpha, pos)
 
     return psi[:, (0 , 1)]
 
