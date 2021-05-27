@@ -12,4 +12,7 @@ calculate Smunu (bf_1 = (1, gridpoint), bf_2 =(1,gridpoint)) --> scalar
 
     jnp.trapz(bf)
 
+basis_mu_r1 * basis_ny_r1 * 1 * basis_lambda_r2 * basis_sigma_r2
+
+int basis_mu_r1 * basis_ny_r2
 

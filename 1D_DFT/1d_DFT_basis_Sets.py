@@ -41,14 +41,7 @@ def S_nm(grid, basis_function):
     """
     # all_basis_func() shape L, n_grid_points
     #Note give basis function array
-    inner_overlap_mat = vmap(jnp.outer, (1,1))(all_basis_func(system_kwargs["x"],
-                                                             system_kwargs["alpha_arr"],
-                                                             system_kwargs["beta_arr"],
-                                                             system_kwargs["dist_arr"][0]),
-                                               all_basis_func(system_kwargs["x"],
-                                                             system_kwargs["alpha_arr"],
-                                                             system_kwargs["beta_arr"],
-                                                             system_kwargs["dist_arr"][0]))
+    inner_overlap_mat = vmap(jnp.outer, (1,1))(basis_function, basis_function)
 
     # shape (n_grid_points, L,L)
 
@@ -56,29 +49,25 @@ def S_nm(grid, basis_function):
     return overlap_mat
 
 @jit
-def kin_int(system_kwargs):
+def kin_int(grid, basis_func_args, basis_function):
     """
     calc the kinetic energy Matrix of size (LxL)
     :param gauss_arg:
     :return: array [LxL]
     """
+    #  Note give basis function array
     laplace = jit(vmap(vmap(grad(grad(gauss_func)),(0, None, None ,None)),
                    (None, 0, 0, 0)))(grid,
                                          basis_func_args["alpha_arr"],
                                          basis_func_args["beta_arr"],
                                          basis_func_args["pos0_arr"])
-
     kin_op = vmap(jnp.outer, (1, 1))(basis_function, laplace)
     overlap_mat = jnp.trapz((-1/2 * kin_op) , grid, axis=0)
     return overlap_mat
 
 def kin_int_numeric(grid, basis_function):
-    laplace = jnp.diff(jnp.diff(basis_function, append = 0), append = 0)
-
+    laplace = vmap(jnp.gradient,(0, None))(vmap(jnp.gradient,(0, None))(basis_function, 0.05), 0.05)
     inner_overlap_mat = vmap(jnp.outer, (1, 1))(basis_function, laplace)
-
-    # shape (n_grid_points, L,L)
-
     overlap_mat = jnp.trapz(inner_overlap_mat, grid, axis=0)
     return (-1/2)* overlap_mat
 
@@ -124,6 +113,52 @@ def four_center_integral_vmap1(grid, basis_function_m, basis_function_n, basis_f
     #calculate four center integral for all basis function lambda sigma for one pair mu, nu
     return vmap(vmap(four_center_integral,(None, None, None, None, 0)),(None, None, None, 0, None))\
         (grid, basis_function_m, basis_function_n, basis_function_l, basis_function_s)
+@jit
+def element_J_nm(grid, P_ls,  basis_function_m, basis_function_n, basis_function_l, basis_function_s):
+    #calculate the sum over all lambda sigma to get one element of the J_nm term
+    return jnp.sum(P_ls * four_center_integral_vmap1(grid, basis_function_m, basis_function_n,
+                                                               basis_function_l, basis_function_s))
+@jit
+def J_nm(grid, basis_function, c_matrix):
+    P_ls = density_mat(c_matrix)
+    return vmap(vmap(element_J_nm, (None, None, None, 0, None, None)), (None, None, 0, None, None, None))\
+        (grid, P_ls, basis_function, basis_function, basis_function, basis_function)
+
+
+########################################################################################################################
+# calc  hartree potential
+########################################################################################################################
+
+
+def hartree_integral_vmap1(grid, basis_function_m, basis_function_n, basis_function_l, basis_function_s):
+    #calculate four center integral for all basis function lambda sigma for one pair mu, nu
+    return vmap(vmap(four_center_integral,(None, None, None, None, 0)),(None, None, 0, None, None))\
+        (grid, basis_function_m, basis_function_n, basis_function_l, basis_function_s)
+
+def element_hartree(grid, P_ls,  basis_function_m, basis_function_n, basis_function_l, basis_function_s):
+    # calculate the sum over all lambda sigma to get one element of the J_nm term
+    return jnp.sum(P_ls * hartree_integral_vmap1(grid, basis_function_m, basis_function_n,
+                                                     basis_function_l, basis_function_s))
+
+def hatree_potential(grid, basis_function, c_matrix):
+    P_ls = density_mat(c_matrix)
+    return vmap(vmap(element_hartree, (None, None, 0, None, None, None)), (None, None, None, None, 0, None)) \
+                                    (grid, P_ls, basis_function, basis_function, basis_function, basis_function)
+
+
+@jit
+def external_potential(grid, basis_function, ext_pot):
+    # all_basis_func() shape L, n_grid_points
+    # array of shape n_grid_points
+    # Note give basis function array
+    pot_therm = ext_pot * basis_function
+    inner_overlap_mat = vmap(jnp.outer, (1, 1))(basis_function, pot_therm)
+
+    # shape (n_grid_points, L,L)
+
+    overlap_mat = jnp.trapz(inner_overlap_mat, grid, axis=0)
+    return overlap_mat
+
 
 
 ########################################################################################################################
@@ -133,9 +168,16 @@ def four_center_integral_vmap1(grid, basis_function_m, basis_function_n, basis_f
 #@jit
 def calc(grid, basis_args, c_arr):
 
+    basis_function = all_basis_func(grid, basis_args)
+    c_matrix = density_mat(c_arr)
 
+    f_ks = kin_int(grid, basis_args, basis_function) + J_nm(grid, basis_function, c_matrix)  #kinetic part
+    S = S_nm(grid, basis_function) #overlap matrix
+    S_inverse = jnp.linalg.inv(S)
+    new_ham = jnp.dot(S_inverse, f_ks)
+    epsilon, c_matrix_new = jsci.linalg.eigh(new_ham, eigvals_only=False)
 
-def SCFC(grid, basis_args, c_arr, max_iter, tol):
+    c_matrix = 0.9 * c_matrix + 0.1 * c_matrix_new
     # calculates the Self consistent field calculation
 
     iter = 0
@@ -171,6 +213,7 @@ def calc_numeric(grid, basis_function, c_arr):
     # print(f"numeric kinetic enrergy: \n{kin_int_numeric(grid, basis_function)} \n "
     #       f"J_nm: \n {J_nm(grid, basis_function, c_matrix)}")
     S = S_nm(grid, basis_function) #overlap matrix
+    print(S)
     S_inverse = jnp.linalg.inv(S)
     new_ham = jnp.dot(S_inverse, f_ks)
     epsilon, c_matrix_new = jsci.linalg.eigh(new_ham, eigvals_only=False)
@@ -192,20 +235,20 @@ def SCFC_numeric(grid, basis_func, c_arr, max_iter, tol):
         energy_diff = energy_arr[iter + 1] - energy_arr[iter]
 
         print(f"step: {iter}, energy: {round(energy, 5)}, energy diff: {round(energy_diff, 5)}")
-
-        if abs(energy_diff) < tol:
-            print("converged!")
-            print(f"final energy is: {energy}")
-            break
-        else:
-            print("not converged")
+        print(c_arr)
+       # if abs(energy_diff) < tol:
+       #     print("converged!")
+       #     print(f"final energy is: {energy}")
+       #     break
+       # else:
+       #     print("not converged")
         iter += 1
     return  energy
 
 
 if __name__ == "__main__":
 
-    n_grid = 200
+    n_grid = 201
     limit = 5
 
     grid_arr = jnp.linspace(-limit, limit, n_grid, dtype=jnp.float64)
@@ -241,7 +284,11 @@ if __name__ == "__main__":
 ########################################################################################################################
     print("\n \t Calculation numeric basis Set \n")
 
-    basis_func = jnp.transpose(test_LCAO_basis_func(grid_arr=grid_arr, num_electrons=2))
+    basis_func = jnp.transpose(test_LCAO_basis_func(grid_arr=grid_arr, num_electrons = 2))/jnp.sqrt(0.05)
+    print(basis_func.shape, jnp.sum(basis_func*basis_func, axis=1) * 0.05)
+
+
+    print("evaluate kin energy:",kin_int_numeric(grid_arr,basis_func),  jnp.sum(density_mat(c_arr) * kin_int_numeric(grid_arr,basis_func)))
     # args = args_basis_func(grid_arr = grid_arr, num_electrons = 2)
     # basis_func = all_basis_func(grid_arr, args)
     # plt.plot(grid_arr,basis_func[0])

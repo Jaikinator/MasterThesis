@@ -77,6 +77,9 @@ def density(orb_array, psi, x):
     # norm the wave function:
     I = integral(x, psi ** 2)
     normed_psi = psi / jnp.sqrt(I)
+    # print('Integral', integral(x, psi ** 2))
+    # print('Integral', integral(x, normed_psi ** 2))
+
     # follow the Hundschen rules to set up the 2 spins on the orbitals
 
     fnT =orb_array
@@ -93,10 +96,8 @@ def density(orb_array, psi, x):
 #excange Potential
 @jit
 def get_exchange(nx,x):
-    energy=-3./4.*(3./jnp.pi)**(1./3.) * jnp.trapz(nx**(4./3.),x)
-
+    energy=- jnp.trapz(nx**(4./3.),x) * 3./4.*(3./jnp.pi)**(1./3.)
     potential=-(3./jnp.pi)**(1./3.)*nx**(1./3.)
-
     return energy, potential
 
 #hartree fock
@@ -143,7 +144,7 @@ def hamilton(x,  ext_x):
 #     return res
 
 
-@jit
+#@jit
 def calc(x, dens, orb_arr, pot_ext ):
         ex_energy, ex_potential = get_exchange(dens, x)
         ha_energy, ha_potential = get_hatree(dens, x)
@@ -155,7 +156,7 @@ def calc(x, dens, orb_arr, pot_ext ):
         dens = 0.9 * dens + 0.1 * density(orb_arr, psi, x)
 
         return energy, psi, dens
-@jit
+#@jit
 def calc_mult_pot(x, dens, orb_arr, pot_kwargs ):
         ex_energy, ex_potential = get_exchange(dens, x)
         ha_energy, ha_potential = get_hatree(dens, x)
@@ -169,7 +170,7 @@ def calc_mult_pot(x, dens, orb_arr, pot_kwargs ):
         return energy, psi, dens
 
 
-@jit
+#@jit
 def calc_Energy_pol(x, dens, orb_arr, pot, c):
     energy,_,_ = calc_pol(x, dens, orb_arr, pot, c)
     ha_energy, _ = get_hatree(dens, x)
@@ -178,7 +179,7 @@ def calc_Energy_pol(x, dens, orb_arr, pot, c):
     res = jnp.sum(energy) - ha_energy + ex_energy - jnp.trapz(innerintegral,x)
     return res
 
-@jit
+#@jit
 def calc_pol(x, dens, orb_arr, pot, c):
         ex_energy, ex_potential = get_exchange(dens, x)
         ha_energy, ha_potential = get_hatree(dens, x)
@@ -190,13 +191,13 @@ def calc_pol(x, dens, orb_arr, pot, c):
 
         return energy, psi, dens
 
-@jit
+#@jit
 def calc_raw(x, dens, orb_arr):
         ex_energy, ex_potential = get_exchange(dens, x)
         ha_energy, ha_potential = get_hatree(dens, x)
 
         # Hamiltonian
-        pot_ext = jnp.diagflat(ex_potential + ha_potential) # ex_potential+
+        pot_ext = jnp.diagflat(ex_potential+ha_potential) # ex_potential+
         H = hamilton(x, ext_x= pot_ext)
         energy, psi = jnp.linalg.eigh(H)
         dens = 0.9 * dens + 0.1 * density(orb_arr, psi, x)
