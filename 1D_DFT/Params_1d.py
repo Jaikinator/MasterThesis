@@ -120,6 +120,7 @@ def test_LCAO_basis_func(grid_arr, num_electrons):
         energy, psi, dens = calc_raw(grid_arr, dens, orb_array)
         #force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
         #print(force.shape,force[0,:,:])
+
         log["energy"].append(energy[0])
         energy_diff = energy[0] - log["energy"][-2]
         log["energy_diff"].append(energy_diff)
@@ -131,59 +132,65 @@ def test_LCAO_basis_func(grid_arr, num_electrons):
             break
         else:
             print("not converged")
-    #create output arrays
-    alpha = np.zeros(num_electrons)
-    beta = np.zeros(num_electrons)
-    pos = np.zeros(num_electrons)
-    psi_new = np.zeros(psi.shape)
 
-    #calculate fit func for the relevant Praticles
-    for i in range(num_electrons):
+        print("energy real space:", energy[:2])
 
-        if i == 0:
-            fit_arr = curve_fit(gauss_func, grid_arr, psi[:,0], p0=[1, 1, -1], maxfev=1000000)[0]
-        else:
-            fit_arr = curve_fit(gauss_func, grid_arr, psi[:,1], maxfev=1000000)[0]
-
-
-        alpha[i] = fit_arr[0]
-        beta[i] = fit_arr[1]
-        pos[i] = fit_arr[2]
-
-
-    # for i in range(3):
-    #
-    #     plt.plot(grid_arr, psi[:,i],label=f"psi [:,{i}] orginal" )
-    #     plt.title("plot psi[:,i](column wise)")
-    #     plt.legend()
-    # plt.savefig(f"/home/jacob/PycharmProjects/MasterThesis/1D_DFT/Plots/psi_column.png")
-    # plt.close()
-
-    # #prove of the fit func for the realspace system
-    # for i in range(len(grid_arr)):
-    #     if i == 0:
-    #         fit_arr = curve_fit(gauss_func, grid_arr, psi[0], p0=[1, 1, 1])[0]
-    #     else:
-    #         fit_arr = curve_fit(gauss_func, grid_arr, psi[i], maxfev=1000000)[0]
-    #     psi_new[i,:] =  gauss_func(grid_arr, fit_arr[0], fit_arr[1] ,fit_arr[2])
-    #     print(f"fit of psi of {i} is done!")
-    #
-    #
-    # dens = density(orb_array, psi_new, grid_arr)
-    # energy, psi, dens = calc_raw(grid_arr, dens, orb_array)
-    # # force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
-    # # print(force.shape,force[0,:,:])
-    # log["energy"].append(energy[0])
-    # energy_diff = energy[0] - log["energy"][-2]
-    # log["energy_diff"].append(energy_diff)
-    # print_log(i, log)
-    #
-
-    # force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
-    # print(force.shape,force[0,:,:])
-
-    # return jnp.array(alpha), jnp.array(beta), jnp.array(pos), create_c_arr(alpha, pos)
+    # print("realspace kin energy:", (-diffOP_second(grid_arr) / 2).shape )
+    _, wavefunc_kin_op = jnp.linalg.eigh(-diffOP_second(grid_arr) / 2)
+    int_kin_energy = jnp.trapz( psi* -diffOP_second(grid_arr) / 2 * psi.T, grid_arr, axis = 0)
 
     return psi[:, (0 , 1)]
 
 
+    # #create output arrays
+    # alpha = np.zeros(num_electrons)
+    # beta = np.zeros(num_electrons)
+    # pos = np.zeros(num_electrons)
+    # psi_new = np.zeros(psi.shape)
+    #
+    # #calculate fit func for the relevant Praticles
+    # for i in range(num_electrons):
+    #
+    #     if i == 0:
+    #         fit_arr = curve_fit(gauss_func, grid_arr, psi[:,0], p0=[1, 1, -1], maxfev=1000000)[0]
+    #     else:
+    #         fit_arr = curve_fit(gauss_func, grid_arr, psi[:,1], maxfev=1000000)[0]
+    #
+    #
+    #     alpha[i] = fit_arr[0]
+    #     beta[i] = fit_arr[1]
+    #     pos[i] = fit_arr[2]
+    #
+    #
+    # # for i in range(3):
+    # #
+    # #     plt.plot(grid_arr, psi[:,i],label=f"psi [:,{i}] orginal" )
+    # #     plt.title("plot psi[:,i](column wise)")
+    # #     plt.legend()
+    # # plt.savefig(f"/home/jacob/PycharmProjects/MasterThesis/1D_DFT/Plots/psi_column.png")
+    # # plt.close()
+    #
+    # # #prove of the fit func for the realspace system
+    # # for i in range(len(grid_arr)):
+    # #     if i == 0:
+    # #         fit_arr = curve_fit(gauss_func, grid_arr, psi[0], p0=[1, 1, 1])[0]
+    # #     else:
+    # #         fit_arr = curve_fit(gauss_func, grid_arr, psi[i], maxfev=1000000)[0]
+    # #     psi_new[i,:] =  gauss_func(grid_arr, fit_arr[0], fit_arr[1] ,fit_arr[2])
+    # #     print(f"fit of psi of {i} is done!")
+    # #
+    # #
+    # # dens = density(orb_array, psi_new, grid_arr)
+    # # energy, psi, dens = calc_raw(grid_arr, dens, orb_array)
+    # # # force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
+    # # # print(force.shape,force[0,:,:])
+    # # log["energy"].append(energy[0])
+    # # energy_diff = energy[0] - log["energy"][-2]
+    # # log["energy_diff"].append(energy_diff)
+    # # print_log(i, log)
+    # #
+    #
+    # # force = grad(calc_Energy, 3)(grid_arr, dens, orb_array, pot_arr)
+    # # print(force.shape,force[0,:,:])
+    #
+    # # return jnp.array(alpha), jnp.array(beta), jnp.array(pos), create_c_arr(alpha, pos)

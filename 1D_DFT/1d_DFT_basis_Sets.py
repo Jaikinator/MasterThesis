@@ -92,6 +92,13 @@ def elec_nuclear_int(grid,  basis_function):
     overlap_mat = jnp.trapz(inner_overlap_mat, grid, axis=0)
     return overlap_mat
 
+def dens_func(basis_function, c_matrix):
+    return jnp.einsum('ni,mi, nr,mr -> r',c_matrix,c_matrix, basis_function, basis_function )
+
+def LDA_exchange(grid, basis_function, c_matrix):
+    potential = -(3. / jnp.pi) ** (1. / 3.) * dens_func(basis_function, c_matrix)** (1. / 3.)
+    return external_potential(grid, basis_function,potential)
+
 ########################################################################################################################
 # calc  Coulomb contribution as well as local  density and four_center_integral
 ########################################################################################################################
@@ -160,16 +167,15 @@ def calc_numeric(grid, basis_function, c_arr):
     c_matrix = density_mat(c_arr)
 
 
-    f_ks = kin_int_numeric(grid, basis_function) + J_nm(grid, basis_function, c_matrix) +hatree_potential(grid, basis_function, c_matrix) #kinetic part
+    f_ks = kin_int_numeric(grid, basis_function) + J_nm(grid, basis_function, c_matrix) + LDA_exchange(grid, basis_function, c_matrix)  #+ hatree_potential(grid, basis_function, c_matrix) #kinetic part
     # print(f"numeric kinetic enrergy: \n{kin_int_numeric(grid, basis_function)} \n "
     #       f"J_nm: \n {J_nm(grid, basis_function, c_matrix)}")
     S = S_nm(grid, basis_function) #overlap matrix
     S_inverse = jnp.linalg.inv(S)
     new_ham = jnp.dot(S_inverse, f_ks)
     epsilon, c_matrix_new = jsci.linalg.eigh(new_ham, eigvals_only=False)
-
-    c_matrix = 0.9 * c_matrix + 0.1 * c_matrix_new
-    return jnp.sum(epsilon), c_matrix
+    #c_matrix = 0.9 * c_matrix + 0.1 * c_matrix_new
+    return epsilon, c_matrix_new
 
 def SCFC_numeric(grid, basis_func, c_arr, max_iter, tol):
     # calculates the Self consistent field calculation
@@ -242,6 +248,7 @@ if __name__ == "__main__":
     # plt.plot(grid_arr, basis_func[1])
     # plt.show()
 
-    SCFC_numeric(grid_arr, basis_func, c_arr, 1000, 1e-7)
+    print(LDA_exchange(grid_arr, basis_func, c_arr))
+    SCFC_numeric(grid_arr, basis_func, c_arr, 1, 1e-5)
 
 

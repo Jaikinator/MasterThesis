@@ -60,7 +60,7 @@ def well_pot(x):
     return index_update(w_old, index[jnp.logical_and(x > -2, x < 2)], 0.)
 
 # integral
-@jit
+#@jit
 def integral(x,y):
     dx = x[1]- x[0]
     return jnp.sum(y*dx, axis = 0)
@@ -72,7 +72,7 @@ def E_field(x,c):
 
 
 #density
-
+#@jit
 def density(orb_array, psi, x):
     # norm the wave function:
     I = integral(x, psi ** 2)
@@ -100,7 +100,7 @@ def get_exchange(nx,x):
     return energy, potential
 
 #hartree fock
-#@jit
+@jit
 def get_hatree(nx, x, eps=1e-1):
     h = x[1] - x[0]
     energy = jnp.sum(nx[None, :] * nx[:, None] * h ** 2 / jnp.sqrt((x[None, :] - x[:, None]) ** 2 + eps) / 2)
