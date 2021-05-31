@@ -102,7 +102,7 @@ def get_exchange(nx,x):
 
 #hartree fock
 @jit
-def get_hatree(nx, x, eps=1e-1):
+def get_hatree(nx, x, eps=1):
     h = x[1] - x[0]
     energy = jnp.sum(nx[None, :] * nx[:, None] * h ** 2 / jnp.sqrt((x[None, :] - x[:, None]) ** 2 + eps) / 2)
     prepot = nx[None, :] * h / jnp.sqrt((x[None, :] - x[:, None]) ** 2 + eps)
@@ -197,7 +197,7 @@ def calc_raw(x, dens, orb_arr):
         ha_energy, ha_potential = get_hatree(dens, x)
 
         # Hamiltonian
-        pot_ext = jnp.diagflat(ex_potential+ha_potential) # ex_potential+
+        pot_ext = jnp.diagflat(ha_potential) # ex_potential+
         H = hamilton(x, ext_x= pot_ext)
         energy, psi = jnp.linalg.eigh(H)
         dens = 0.9 * dens + 0.1 * density(orb_arr, psi, x)

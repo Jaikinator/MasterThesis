@@ -135,9 +135,6 @@ def test_LCAO_basis_func(grid_arr, num_electrons):
 
         print("energy real space:", energy[:2])
 
-    # print("realspace kin energy:", (-diffOP_second(grid_arr) / 2).shape )
-    _, wavefunc_kin_op = jnp.linalg.eigh(-diffOP_second(grid_arr) / 2)
-    int_kin_energy = jnp.trapz( psi* -diffOP_second(grid_arr) / 2 * psi.T, grid_arr, axis = 0)
 
     return psi[:, (0 , 1)]
 
