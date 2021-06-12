@@ -71,7 +71,7 @@ def kin_int_numeric(grid, basis_function):
     overlap_mat = jnp.trapz(inner_overlap_mat, grid, axis=0)
     return (-1/2)* overlap_mat
 
-
+@jit
 def elec_nuclear_int(grid,  basis_function):
 
     interact_basis_func = (1/(grid)) * basis_function
@@ -81,12 +81,19 @@ def elec_nuclear_int(grid,  basis_function):
     overlap_mat = jnp.trapz(inner_overlap_mat, grid, axis=0)
     return overlap_mat
 
+@jit
 def dens_func(basis_function, c_matrix):
     return jnp.einsum('ni,mi, nr,mr -> r',c_matrix,c_matrix, basis_function, basis_function )
 
+@jit
 def LDA_exchange(grid, basis_function, c_matrix):
     potential = -(3. / jnp.pi) ** (1. / 3.) * dens_func(basis_function, c_matrix)** (1. / 3.)
-    return external_potential(grid, basis_function,potential)
+    return external_potential(grid, basis_function, potential)
+
+@jit
+def LDA_exchange_energy(grid, basis_function, c_matrix):
+    energy = -3./4.*(3./jnp.pi)**(1./3.)* jnp.trapz((dens_func(basis_function, c_matrix)**(4./3.)), grid)
+    return  energy
 
 ########################################################################################################################
 # calc  Coulomb contribution as well as local  density and four_center_integral
@@ -130,19 +137,19 @@ def J_nm(grid, basis_function, c_matrix):
 ########################################################################################################################
 
 
-def hartree_integral_vmap1(grid, basis_function_m, basis_function_n, basis_function_l, basis_function_s):
+def hartree_exchange_integral_vmap1(grid, basis_function_m, basis_function_n, basis_function_l, basis_function_s):
     #calculate four center integral for all basis function lambda sigma for one pair mu, nu
     return vmap(vmap(four_center_integral,(None, None, None, None, 0)),(None, None, 0, None, None))\
         (grid, basis_function_m, basis_function_n, basis_function_l, basis_function_s)
 
-def element_hartree(grid, P_ls,  basis_function_m, basis_function_n, basis_function_l, basis_function_s):
+def element_hartree_exchange(grid, P_ls,  basis_function_m, basis_function_n, basis_function_l, basis_function_s):
     # calculate the sum over all lambda sigma to get one element of the J_nm term
-    return jnp.sum(P_ls * hartree_integral_vmap1(grid, basis_function_m, basis_function_n,
+    return jnp.sum(P_ls * hartree_exchange_integral_vmap1(grid, basis_function_m, basis_function_n,
                                                      basis_function_l, basis_function_s))
 
-def hatree_potential(grid, basis_function, c_matrix):
+def hatree_exchange_potential(grid, basis_function, c_matrix):
     P_ls = density_mat(c_matrix)
-    return vmap(vmap(element_hartree, (None, None, 0, None, None, None)), (None, None, None, None, 0, None)) \
+    return vmap(vmap(element_hartree_exchange, (None, None, 0, None, None, None)), (None, None, None, None, 0, None)) \
                                     (grid, P_ls, basis_function, basis_function, basis_function, basis_function)
 
 
@@ -154,10 +161,14 @@ def external_potential(grid, basis_function, ext_pot):
     pot_therm = ext_pot * basis_function
     inner_overlap_mat = vmap(jnp.outer, (1, 1))(basis_function, pot_therm)
 
-    # shape (n_grid_points, L,L)
-
     overlap_mat = jnp.trapz(inner_overlap_mat, grid, axis=0)
     return overlap_mat
+@jit
+def total_energy(grid, energy, basis_function, c_matrix):
+    eig_sum = jnp.sum(energy)
+    hartree_energy =1/2 * jnp.sum(c_matrix * J_nm(grid, basis_function, c_matrix) )
+    LDA_energy = LDA_exchange_energy(grid,basis_function, c_matrix)
+    return eig_sum - hartree_energy + LDA_energy
 
 
 
@@ -167,7 +178,7 @@ def external_potential(grid, basis_function, ext_pot):
 
 #@jit
 def calc(grid, basis_args, c_arr):
-
+    # max_iter = 1000
     basis_function = all_basis_func(grid, basis_args)
     c_matrix = density_mat(c_arr)
 
@@ -203,7 +214,7 @@ def calc(grid, basis_args, c_arr):
 ########################################################################################################################
 # Do it numericaly
 ########################################################################################################################
-
+@jit
 def calc_numeric(grid, basis_function, c_arr):
 
     c_matrix = density_mat(c_arr)
@@ -220,7 +231,7 @@ def calc_numeric(grid, basis_function, c_arr):
     #c_matrix = 0.9 * c_matrix + 0.1 * c_matrix_new
     return epsilon, c_matrix_new
 
-def SCFC_numeric(grid, basis_func, c_arr, max_iter, tol):
+def SCFC_numeric(grid, basis_func, c_arr, max_iter,tol):
     # calculates the Self consistent field calculation
 
     iter = 0
@@ -231,7 +242,6 @@ def SCFC_numeric(grid, basis_func, c_arr, max_iter, tol):
         energy, c_arr = calc_numeric(grid, basis_func,  c_arr)
         energy_arr.append(energy)
 
-        # print(f"c arrray after calc: \n{c_arr}")
         energy_diff = energy_arr[iter + 1] - energy_arr[iter]
 
         print(f"step: {iter}, energy: {round(energy, 5)}, energy diff: {round(energy_diff, 5)}")

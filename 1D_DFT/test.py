@@ -82,3 +82,11 @@ b = jnp.arange(16).reshape(4, 4)
 c = b + b.T
 print(np.matmul(c, np.linalg.eigh((c) * 1.0)[1][0]) / np.linalg.eigh(c)[0][0] - np.linalg.eigh(c)[1][0])
 print(np.matmul(c, np.linalg.eigh((c) * 1.0)[1][:, 0]) / np.linalg.eigh(c)[0][0] - np.linalg.eigh(c)[1][:, 0])
+
+
+
+a = jnp.array([[1,2,3],
+               [3,2,1],
+               [2,1,3]])
+
+print(a*a)

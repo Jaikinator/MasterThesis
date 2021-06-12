@@ -72,9 +72,7 @@ def H2(**kwargs):
     return alpha, beta, dist, c
 
 
-
-
-def test_LCAO_basis_func(grid_arr, num_electrons):
+def LCAO_basis_func(grid_arr, num_electrons, tot_energy = False):
     """
     to test the DFT Kohn sham approach in 1d_DFT_basis_Sets for the internal coe not relevant
     :param x: grid_arr
@@ -98,16 +96,16 @@ def test_LCAO_basis_func(grid_arr, num_electrons):
     def print_log(i, log):
         print(f"step: {i} energy: {round(log['energy'][-1], 3)} energy_diff: {round(log['energy_diff'][-1], 5)}")
 
-    #create fit func
-    def gauss_func(x, alpha, beta, pos0):
-        """
-        func to crate a gauss function
-        :param x:  input grid array
-        :param coeff: input an 2x1 array where coeff[0] is the prefactor of the exponential func
-                      and coeff[0] the factor in the exponential func
-        :return: gauss type func
-        """
-        return alpha * jnp.exp(- beta * (x - pos0) ** 2)
+    # #create fit func
+    # def gauss_func(x, alpha, beta, pos0):
+    #     """
+    #     func to crate a gauss function
+    #     :param x:  input grid array
+    #     :param coeff: input an 2x1 array where coeff[0] is the prefactor of the exponential func
+    #                   and coeff[0] the factor in the exponential func
+    #     :return: gauss type func
+    #     """
+    #     return alpha * jnp.exp(- beta * (x - pos0) ** 2)
 
     #solve System in realspace
 
@@ -133,10 +131,13 @@ def test_LCAO_basis_func(grid_arr, num_electrons):
         else:
             print("not converged")
 
-        print("energy real space:", energy[:2])
+    if tot_energy == True:
+        return jnp.sum(energy[:2]) + get_exchange(dens, grid_arr)[0] - get_hatree(dens, grid_arr)[0]
+    else:
 
+        print(f"\n\n\n\tenergy real space: {jnp.sum(energy[:2]) + get_exchange(dens, grid_arr)[0] - get_hatree(dens, grid_arr)[0]} \n\n\n")
 
-    return psi[:, (0 , 1)]
+        return psi[:, (0 , 1)]
 
 
     # #create output arrays
