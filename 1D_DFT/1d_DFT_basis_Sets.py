@@ -6,6 +6,7 @@ config.update("jax_enable_x64", True)
 from Params_1d import *
 from dft_1d import *
 
+
 @jit
 def gauss_func(x,alpha, beta, pos0):
     """
@@ -16,7 +17,6 @@ def gauss_func(x,alpha, beta, pos0):
     :return: gauss type func
     """
     return alpha * jnp.exp(- beta * (x - pos0)** 2)
-
 
 
 def args_basis_func(**kwargs):
@@ -65,6 +65,7 @@ def kin_int(grid, basis_func_args, basis_function):
     overlap_mat = jnp.trapz((-1/2 * kin_op) , grid, axis=0)
     return overlap_mat
 
+@jit
 def kin_int_numeric(grid, basis_function):
     laplace = vmap(jnp.gradient,(0, None))(vmap(jnp.gradient,(0, None))(basis_function, 0.05), 0.05)
     inner_overlap_mat = vmap(jnp.outer, (1, 1))(basis_function, laplace)
@@ -96,8 +97,9 @@ def LDA_exchange_energy(grid, basis_function, c_matrix):
     return  energy
 
 ########################################################################################################################
-# calc  Coulomb contribution as well as local  density and four_center_integral
+# calc Coulomb contribution as well as local density and four_center_integral
 ########################################################################################################################
+
 @jit
 def density_mat(c_arr):
     dens_mat = jnp.einsum('ni,mi -> nm', c_arr, c_arr)
@@ -219,16 +221,18 @@ def calc_numeric(grid, basis_function, c_arr):
 
     c_matrix = density_mat(c_arr)
 
-
-    f_ks = kin_int_numeric(grid, basis_function) + J_nm(grid, basis_function, c_matrix) + LDA_exchange(grid, basis_function, c_matrix)  #+ hatree_potential(grid, basis_function, c_matrix) #kinetic part
+    f_ks = kin_int_numeric(grid, basis_function) + J_nm(grid, basis_function, c_matrix) + LDA_exchange(grid, basis_function, c_matrix)  #kinetic part #+ LDA_exchange(grid, basis_function, c_matrix)
     # print(f"numeric kinetic enrergy: \n{kin_int_numeric(grid, basis_function)} \n "
     #       f"J_nm: \n {J_nm(grid, basis_function, c_matrix)}")
     S = S_nm(grid, basis_function) #overlap matrix
-    print(S)
-    S_inverse = jnp.linalg.inv(S)
-    new_ham = jnp.dot(S_inverse, f_ks)
+    overlap_eig, overlap_eig_vec = jsci.linalg.eigh(S, eigvals_only=False)
+    v_div_sqrt_eig_00 = overlap_eig_vec * 1 / jnp.expand_dims(jnp.sqrt(overlap_eig), -1)
+    v_div_sqrt_eig = jnp.matmul(v_div_sqrt_eig_00 , jnp.conj(jnp.transpose(overlap_eig_vec)))
+    new_ham = jnp.matmul(v_div_sqrt_eig, jnp.matmul(f_ks, jnp.conj(jnp.transpose(v_div_sqrt_eig))))  #v_div_sqrt_eig adjungiert because Johnatan says
+
     epsilon, c_matrix_new = jsci.linalg.eigh(new_ham, eigvals_only=False)
-    #c_matrix = 0.9 * c_matrix + 0.1 * c_matrix_new
+
+    c_matrix_new =  jnp.matmul(v_div_sqrt_eig,c_matrix)
     return epsilon, c_matrix_new
 
 def SCFC_numeric(grid, basis_func, c_arr, max_iter,tol):
@@ -245,15 +249,16 @@ def SCFC_numeric(grid, basis_func, c_arr, max_iter,tol):
         energy_diff = energy_arr[iter + 1] - energy_arr[iter]
 
         print(f"step: {iter}, energy: {round(energy, 5)}, energy diff: {round(energy_diff, 5)}")
-        print(c_arr)
-       # if abs(energy_diff) < tol:
-       #     print("converged!")
-       #     print(f"final energy is: {energy}")
-       #     break
-       # else:
-       #     print("not converged")
+
+        # if abs(energy_diff) < tol:
+        #     print("converged!")
+        #     print(f"final energy is: {energy}")
+        #     break
+        # else:
+        #     print("not converged")
         iter += 1
-    return  energy
+
+    return  energy, c_arr
 
 
 if __name__ == "__main__":
@@ -294,18 +299,21 @@ if __name__ == "__main__":
 ########################################################################################################################
     print("\n \t Calculation numeric basis Set \n")
 
-    basis_func = jnp.transpose(test_LCAO_basis_func(grid_arr=grid_arr, num_electrons = 2))/jnp.sqrt(0.05)
-    print(basis_func.shape, jnp.sum(basis_func*basis_func, axis=1) * 0.05)
+    basis_func = jnp.transpose(LCAO_basis_func(grid_arr=grid_arr, num_electrons = 2))/jnp.sqrt(0.05)
 
+    tot_energy_real = LCAO_basis_func(grid_arr=grid_arr, num_electrons = 2, tot_energy= True)
 
-    print("evaluate kin energy:",kin_int_numeric(grid_arr,basis_func),  jnp.sum(density_mat(c_arr) * kin_int_numeric(grid_arr,basis_func)))
     # args = args_basis_func(grid_arr = grid_arr, num_electrons = 2)
     # basis_func = all_basis_func(grid_arr, args)
     # plt.plot(grid_arr,basis_func[0])
     # plt.plot(grid_arr, basis_func[1])
     # plt.show()
 
-    print(LDA_exchange(grid_arr, basis_func, c_arr))
-    SCFC_numeric(grid_arr, basis_func, c_arr, 1, 1e-5)
+    energy, c_matrix = SCFC_numeric(grid_arr, basis_func, c_arr, 2, 1e-5)
+    tot_energy = total_energy(grid_arr, energy, basis_func, c_matrix)
+    print(f"\n\t total energy basis func: {tot_energy} \n"
+          f"\t total energy realspace: {tot_energy_real} \n"
+          f"\t diff: {tot_energy - tot_energy_real}")
+
 
 

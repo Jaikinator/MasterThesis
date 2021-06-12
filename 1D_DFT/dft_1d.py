@@ -107,7 +107,6 @@ def get_hatree(nx, x, eps=1):
     energy = jnp.sum(nx[None, :] * nx[:, None] * h ** 2 / jnp.sqrt((x[None, :] - x[:, None]) ** 2 + eps) / 2)
     prepot = nx[None, :] * h / jnp.sqrt((x[None, :] - x[:, None]) ** 2 + eps)
     potential =lambda x :  jnp.sum(x, axis=-1)
-
     return energy, vmap(potential, 0, 0 )(prepot)
 
 #prepare actual calc.
